@@ -13,4 +13,4 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-Base = declarative_base()                          2aaaaa
+Base = declarative_base()
