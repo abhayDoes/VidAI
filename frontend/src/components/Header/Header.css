@@ -1,0 +1,65 @@
+.editor-header {
+  height: 42px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: #e6edf3;
+  text-transform: uppercase;
+}
+
+.brand-dot {
+  width: 8px;
+  height: 8px;
+  background: #388bfd;
+  border-radius: 50%;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-text {
+  font-size: 12px;
+  color: #8b949e;
+  font-family: monospace;
+}
+
+.nav-btn {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.nav-btn:hover {
+  background: #30363d;
+  color: #ffffff;
+}
+
+.nav-btn.primary {
+  background: #238636;
+  border-color: #2ea043;
+  color: #ffffff;
+}
+
+.nav-btn.primary:hover {
+  background: #2ea043;
+}

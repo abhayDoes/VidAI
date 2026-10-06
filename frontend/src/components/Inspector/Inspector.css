@@ -1,0 +1,155 @@
+.inspector-panel {
+  width: 260px;
+  min-width: 260px;
+  background: #161b22;
+  border-left: 1px solid #21262d;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inspector-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #6e7681;
+}
+
+.inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #21262d;
+}
+
+.inspector-section:last-child {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.muted-note {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+.trim-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+.trim-inputs label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #8b949e;
+}
+
+.trim-inputs input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #e6edf3;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.trim-inputs input:focus {
+  outline: none;
+  border-color: #388bfd;
+}
+
+.slider-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #8b949e;
+}
+
+.slider-label input[type="range"] {
+  width: 100%;
+  accent-color: #1f6feb;
+}
+
+.trim-meta {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #8b949e;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.preset-btn {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.preset-btn:hover:not(:disabled) {
+  background: #30363d;
+  color: #ffffff;
+}
+
+.preset-btn.active {
+  background: #1f6feb;
+  border-color: #388bfd;
+  color: #ffffff;
+}
+
+.preset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preset-btn.wide {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.transform-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transform-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transform-label {
+  font-size: 10px;
+  color: #8b949e;
+}
+
+.rendered-video-link {
+  color: #79c0ff;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.rendered-video-link:hover {
+  text-decoration: underline;
+}
