@@ -12,7 +12,11 @@ export default function TrackLane({
   onMoveClipTrack,
 }) {
   return (
-    <div className="track-lane">
+    <div
+      className={`track-lane ${
+        track.type === "audio" ? "audio-track-lane" : "video-track-lane"
+      }`}
+    >
       {clips
         .filter((clip) => clip.trackId === track.id)
         .map((clip) => (

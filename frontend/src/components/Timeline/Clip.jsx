@@ -14,8 +14,10 @@ export default function Clip({
 }) {
   const dragRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
-  const left = clip.start * pixelsPerSecond;
-  const width = Math.max(clip.duration * pixelsPerSecond, 8);
+  const left = (Number.isFinite(clip.start) ? clip.start : 0) * pixelsPerSecond;
+  const clipDur =
+    Number.isFinite(clip.duration) && clip.duration > 0 ? clip.duration : 1;
+  const width = Math.max(clipDur * pixelsPerSecond, 12);
   const speed = clip.speed || 1;
 
   useEffect(() => {
@@ -80,7 +82,9 @@ export default function Clip({
 
   return (
     <div
-      className={`timeline-clip ${isSelected ? "selected" : ""}`}
+      className={`timeline-clip ${isSelected ? "selected" : ""} ${
+        clip.type === "audio" ? "audio-clip" : "video-clip"
+      }`}
       style={{
         left: `${left}px`,
         width: `${width}px`,
@@ -94,7 +98,13 @@ export default function Clip({
       }}
     >
       <div className="clip-handle left" />
-      <span className="clip-title">{clip.title}</span>
+      <div className="clip-content-wrap">
+        <span className="clip-type-icon">
+          {clip.type === "audio" ? "🎵" : "🎬"}
+        </span>
+        <span className="clip-title">{clip.title}</span>
+      </div>
+      {clip.type === "audio" && <div className="audio-waveform-bars" />}
       {speed !== 1 && <span className="clip-speed">{speed}x</span>}
       <div className="clip-handle right" />
     </div>

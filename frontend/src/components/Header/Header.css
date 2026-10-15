@@ -63,3 +63,14 @@
 .nav-btn.primary:hover {
   background: #2ea043;
 }
+
+.nav-btn.audio-btn {
+  background: #064e3b;
+  border-color: #059669;
+  color: #a7f3d0;
+}
+
+.nav-btn.audio-btn:hover {
+  background: #059669;
+  color: #ffffff;
+}

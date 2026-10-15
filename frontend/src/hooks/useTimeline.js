@@ -4,9 +4,9 @@ export const PIXELS_PER_SECOND = 20;
 
 export default function useTimeline({ videoDuration }) {
   const [tracks, setTracks] = useState([
-    { id: 3, name: "Track 3", locked: false, visible: true },
-    { id: 2, name: "Track 2", locked: false, visible: true },
-    { id: 1, name: "Track 1", locked: false, visible: true },
+    { id: 2, name: "Track 2", type: "video", locked: false, visible: true },
+    { id: 1, name: "Track 1", type: "video", locked: false, visible: true },
+    { id: 101, name: "Audio Track 1 (BGM)", type: "audio", volume: 0.8, locked: false, visible: true },
   ]);
   const [clips, setClips] = useState([]);
   const [markers, setMarkers] = useState([]);
@@ -18,14 +18,31 @@ export default function useTimeline({ videoDuration }) {
     setSelectedClipId(clip.id);
   }, []);
 
-  const addTrack = useCallback(() => {
+  const addTrack = useCallback((type = "video") => {
     setTracks((prev) => {
       const nextId = prev.length ? Math.max(...prev.map((t) => t.id)) + 1 : 1;
-      return [
-        { id: nextId, name: `Track ${nextId}`, locked: false, visible: true },
-        ...prev,
-      ];
+      const count = prev.filter((t) => (t.type || "video") === type).length + 1;
+      const name = type === "audio" ? `Audio Track ${count}` : `Track ${count}`;
+      const newTrack = {
+        id: nextId,
+        name,
+        type,
+        volume: 0.8,
+        locked: false,
+        visible: true,
+      };
+
+      if (type === "audio") {
+        return [...prev, newTrack];
+      }
+      return [newTrack, ...prev];
     });
+  }, []);
+
+  const setTrackVolume = useCallback((trackId, volume) => {
+    setTracks((prev) =>
+      prev.map((t) => (t.id === trackId ? { ...t, volume: Math.max(0, Math.min(1, volume)) } : t))
+    );
   }, []);
 
   const toggleTrackLock = useCallback((trackId) => {
@@ -136,15 +153,19 @@ export default function useTimeline({ videoDuration }) {
 
   const moveClipToTrack = useCallback(
     (clipId, trackId) => {
+      const clip = clips.find((c) => c.id === clipId);
       const target = tracks.find((t) => t.id === trackId);
-      if (!target || target.locked) return;
+      if (!clip || !target || target.locked) return;
+      if (clip.type === "audio" && target.type !== "audio") return;
+      if (clip.type !== "audio" && target.type === "audio") return;
+
       setClips((prev) =>
         prev.map((c) =>
           c.id === clipId && c.trackId !== trackId ? { ...c, trackId } : c
         )
       );
     },
-    [tracks]
+    [clips, tracks]
   );
 
   const snapTime = useCallback(
@@ -187,6 +208,7 @@ export default function useTimeline({ videoDuration }) {
     addTrack,
     toggleTrackLock,
     toggleTrackVisible,
+    setTrackVolume,
     splitClip,
     addMarker,
     deleteClip,

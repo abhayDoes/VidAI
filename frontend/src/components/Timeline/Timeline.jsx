@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import Toolbar from "./Toolbar";
 import Ruler from "./Ruler";
 import TrackHeader from "./TrackHeader";
@@ -28,22 +28,43 @@ export default function Timeline({
   onAddMarker,
   onToggleTrackLock,
   onToggleTrackVisible,
+  onSetTrackVolume,
 }) {
   const tracksAreaRef = useRef(null);
+  const timelineBodyRef = useRef(null);
+  const [zoom, setZoom] = useState(PIXELS_PER_SECOND);
   const [isDragging, setIsDragging] = useState(false);
 
-  const timeFromEvent = (e) => {
-    if (!tracksAreaRef.current) return 0;
-    const rect = tracksAreaRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    return Math.max(0, clickX / PIXELS_PER_SECOND);
-  };
+  const timeFromEvent = useCallback(
+    (e) => {
+      if (!tracksAreaRef.current) return 0;
+      const rect = tracksAreaRef.current.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      return Math.max(0, clickX / zoom);
+    },
+    [zoom]
+  );
 
   const handleMouseDown = (e) => {
     onSeek(onSnapTime(timeFromEvent(e)));
     setIsDragging(true);
     onSetScrubbing(true);
   };
+
+  // Auto-scroll timeline to bring selected/imported clip into view
+  useEffect(() => {
+    if (!selectedClipId || !timelineBodyRef.current) return;
+    const clip = clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    const clipLeft = (Number.isFinite(clip.start) ? clip.start : 0) * zoom;
+    const body = timelineBodyRef.current;
+    const viewLeft = body.scrollLeft;
+    const viewRight = body.scrollLeft + body.clientWidth - 160;
+
+    if (clipLeft < viewLeft || clipLeft > viewRight) {
+      body.scrollTo({ left: Math.max(0, clipLeft - 60), behavior: "smooth" });
+    }
+  }, [selectedClipId, clips, zoom]);
 
   useEffect(() => {
     if (!isDragging) return undefined;
@@ -65,7 +86,18 @@ export default function Timeline({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, duration, onSeek, onSetScrubbing, onSnapTime]);
+  }, [isDragging, duration, onSeek, onSetScrubbing, onSnapTime, timeFromEvent]);
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(100, Math.round(prev * 1.3)));
+  const handleZoomOut = () => setZoom((prev) => Math.max(2, Math.round(prev / 1.3)));
+  const handleZoomFit = () => {
+    if (!timelineBodyRef.current || duration <= 0) return;
+    const available = timelineBodyRef.current.clientWidth - 160;
+    if (available > 100) {
+      const fitZoom = Math.max(2, Math.min(100, available / duration));
+      setZoom(Math.round(fitZoom * 10) / 10);
+    }
+  };
 
   return (
     <section className="timeline-section">
@@ -74,6 +106,11 @@ export default function Timeline({
         hasSelectedClip={Boolean(selectedClipId)}
         currentTime={currentTime}
         duration={duration}
+        zoom={zoom}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomFit={handleZoomFit}
+        onSeek={onSeek}
         onAddTrack={onAddTrack}
         onToggleSnap={onToggleSnap}
         onSplitClip={onSplitClip}
@@ -81,7 +118,7 @@ export default function Timeline({
         onAddMarker={onAddMarker}
       />
 
-      <div className="timeline-body">
+      <div className="timeline-body" ref={timelineBodyRef}>
         {/* Track Headers */}
         <div className="track-headers">
           <div className="timecode-header">{formatShortTimecode(currentTime)}</div>
@@ -91,6 +128,7 @@ export default function Timeline({
               track={track}
               onToggleLock={onToggleTrackLock}
               onToggleVisible={onToggleTrackVisible}
+              onSetVolume={onSetTrackVolume}
             />
           ))}
         </div>
@@ -100,9 +138,9 @@ export default function Timeline({
           className="timeline-tracks-area"
           ref={tracksAreaRef}
           onMouseDown={handleMouseDown}
-          style={{ width: `${Math.max(duration * PIXELS_PER_SECOND, 1200)}px` }}
+          style={{ width: `${Math.max(duration * zoom, 1200)}px` }}
         >
-          <Playhead time={currentTime} pixelsPerSecond={PIXELS_PER_SECOND} />
+          <Playhead time={currentTime} pixelsPerSecond={zoom} />
 
           {/* Markers */}
           {markers.map((m) => (
@@ -110,7 +148,7 @@ export default function Timeline({
               key={m.id}
               className="marker-pin"
               title={m.label}
-              style={{ left: `${m.time * PIXELS_PER_SECOND}px` }}
+              style={{ left: `${m.time * zoom}px` }}
               onClick={(e) => {
                 e.stopPropagation();
                 onSeek(m.time);
@@ -118,7 +156,7 @@ export default function Timeline({
             />
           ))}
 
-          <Ruler duration={duration} pixelsPerSecond={PIXELS_PER_SECOND} />
+          <Ruler duration={duration} pixelsPerSecond={zoom} />
 
           {/* Track Rows */}
           {tracks.map((track, index) => (
@@ -129,7 +167,7 @@ export default function Timeline({
               trackIndex={index}
               clips={clips}
               selectedClipId={selectedClipId}
-              pixelsPerSecond={PIXELS_PER_SECOND}
+              pixelsPerSecond={zoom}
               onSelectClip={onSelectClip}
               onMoveClip={onMoveClip}
               onMoveClipTrack={onMoveClipTrack}
@@ -142,6 +180,7 @@ export default function Timeline({
 }
 
 const formatShortTimecode = (secs) => {
+  if (!Number.isFinite(secs) || secs < 0) secs = 0;
   const hours = Math.floor(secs / 3600);
   const minutes = Math.floor((secs % 3600) / 60);
   const seconds = Math.floor(secs % 60);

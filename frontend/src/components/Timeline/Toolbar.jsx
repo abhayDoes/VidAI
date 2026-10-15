@@ -5,18 +5,34 @@ export default function Toolbar({
   hasSelectedClip,
   currentTime,
   duration,
+  zoom = 20,
+  onZoomIn,
+  onZoomOut,
+  onZoomFit,
+  onSeek,
   onAddTrack,
   onToggleSnap,
   onSplitClip,
   onDeleteClip,
   onAddMarker,
 }) {
+  const handleMinimapClick = (e) => {
+    if (!onSeek || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    onSeek(ratio * duration);
+  };
+
   return (
     <div className="timeline-toolbar">
       <div className="toolbar-left">
-        <button className="toolbar-btn" onClick={onAddTrack}>
+        <button className="toolbar-btn" onClick={() => onAddTrack("video")} title="Add Video Track">
           <Icons.AddTrack />
-          <span>Add Track</span>
+          <span>+ Video</span>
+        </button>
+        <button className="toolbar-btn" onClick={() => onAddTrack("audio")} title="Add Audio Track">
+          <Icons.Music />
+          <span>+ Audio</span>
         </button>
         <div className="toolbar-divider" />
         <button className="toolbar-icon-btn" title="Undo">
@@ -57,7 +73,39 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        <div className="minimap-bar">
+        <div className="zoom-controls">
+          <button
+            className="toolbar-icon-btn zoom-btn"
+            onClick={onZoomOut}
+            title="Zoom Out"
+          >
+            -
+          </button>
+          <span className="zoom-label" title="Timeline zoom level">
+            {Math.round((zoom / 20) * 100)}%
+          </span>
+          <button
+            className="toolbar-icon-btn zoom-btn"
+            onClick={onZoomIn}
+            title="Zoom In"
+          >
+            +
+          </button>
+          <button
+            className="toolbar-btn fit-btn"
+            onClick={onZoomFit}
+            title="Fit Entire Timeline"
+          >
+            Fit
+          </button>
+        </div>
+        <div className="toolbar-divider" />
+        <div
+          className="minimap-bar"
+          onClick={handleMinimapClick}
+          title="Click to seek anywhere on the timeline"
+          style={{ cursor: "pointer" }}
+        >
           <div
             className="minimap-window"
             style={{

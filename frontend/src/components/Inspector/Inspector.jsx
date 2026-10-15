@@ -81,6 +81,27 @@ export default function Inspector({
     <aside className="inspector-panel">
       <div className="inspector-heading">Inspector &amp; Edit Tools</div>
 
+      {selectedClip?.type === "audio" && (
+        <div className="inspector-section audio-inspector-section">
+          <div className="section-title">🎵 Audio Clip Volume</div>
+          <div className="slider-label">
+            <span>Volume: {Math.round((selectedClip.volume ?? 1) * 100)}%</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={selectedClip.volume ?? 1}
+              onChange={(e) =>
+                onUpdateClip(selectedClip.id, {
+                  volume: parseFloat(e.target.value),
+                })
+              }
+            />
+          </div>
+        </div>
+      )}
+
       <TrimControls
         key={selectedClip ? selectedClip.id : "none"}
         selectedClip={selectedClip}
@@ -99,31 +120,41 @@ export default function Inspector({
 
       <div className="inspector-section">
         <div className="section-title">Rotate &amp; Flip</div>
-        <Transform
-          transform={transform}
-          onRotate={handleRotate}
-          onChange={onTransformChange}
-          disabled={!selectedClip}
-        />
-        {!selectedClip && (
-          <p className="muted-note">Select a clip to rotate or flip just that part.</p>
+        {selectedClip?.type === "audio" ? (
+          <p className="muted-note">Visual rotation is disabled for audio clips.</p>
+        ) : (
+          <>
+            <Transform
+              transform={transform}
+              onRotate={handleRotate}
+              onChange={onTransformChange}
+              disabled={!selectedClip}
+            />
+            {!selectedClip && (
+              <p className="muted-note">Select a clip to rotate or flip just that part.</p>
+            )}
+          </>
         )}
       </div>
 
       <div className="inspector-section">
         <div className="section-title">Resolution Presets</div>
-        <div className="preset-grid">
-          {RESOLUTIONS.map((r) => (
-            <button
-              key={r.label}
-              className="preset-btn"
-              onClick={() => handleResize(r.width, r.height)}
-              disabled={!filename}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {selectedClip?.type === "audio" ? (
+          <p className="muted-note">Resolution presets apply to video tracks only.</p>
+        ) : (
+          <div className="preset-grid">
+            {RESOLUTIONS.map((r) => (
+              <button
+                key={r.label}
+                className="preset-btn"
+                onClick={() => handleResize(r.width, r.height)}
+                disabled={!filename || selectedClip?.type === "audio"}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
     </aside>

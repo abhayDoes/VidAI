@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export default function useVideoPlayer() {
   const videoRef = useRef(null);
@@ -23,15 +23,47 @@ export default function useVideoPlayer() {
       const tempVideo = document.createElement("video");
       tempVideo.preload = "metadata";
       tempVideo.src = url;
-      tempVideo.onloadedmetadata = () => {
-        const duration = tempVideo.duration || 60;
+
+      let settled = false;
+      const finish = (rawDur) => {
+        if (settled) return;
+        settled = true;
         tempVideo.onloadedmetadata = null;
         tempVideo.onerror = null;
-        tempVideo.removeAttribute("src");
-        tempVideo.load();
-        resolve({ url, duration, file });
+        tempVideo.ontimeupdate = null;
+        let validDuration =
+          Number.isFinite(rawDur) && rawDur > 0 ? rawDur : null;
+        if (!validDuration || validDuration > 86400) {
+          validDuration = 60;
+        }
+        try {
+          tempVideo.removeAttribute("src");
+          tempVideo.load();
+        } catch {
+          // Ignore cleanup errors
+        }
+        resolve({ url, duration: validDuration, file });
       };
+
+      tempVideo.onloadedmetadata = () => {
+        if (tempVideo.duration === Infinity) {
+          // Chromium WebM / screen recorder duration workaround
+          tempVideo.currentTime = 1e101;
+          tempVideo.ontimeupdate = () => {
+            tempVideo.ontimeupdate = null;
+            const trueDur = tempVideo.duration;
+            tempVideo.currentTime = 0;
+            finish(trueDur);
+          };
+          setTimeout(() => finish(60), 1000);
+        } else {
+          finish(tempVideo.duration);
+        }
+      };
+
       tempVideo.onerror = () => {
+        if (settled) return;
+        settled = true;
         URL.revokeObjectURL(url);
         reject(new Error(`Could not read video: ${file.name}`));
       };
@@ -55,15 +87,53 @@ export default function useVideoPlayer() {
   );
 
   const togglePlay = useCallback(() => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      setIsPlaying(true);
-      videoRef.current.play().catch(() => setIsPlaying(false));
-    } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
+    setIsPlaying((prev) => {
+      const next = !prev;
+      if (videoRef.current) {
+        if (next) {
+          videoRef.current.play().catch(() => {});
+        } else {
+          videoRef.current.pause();
+        }
+      }
+      return next;
+    });
   }, []);
+
+  // Timer ticker so playback and audio track can advance even if no video clip is under playhead
+  useEffect(() => {
+    if (!isPlaying) return undefined;
+    let lastTime = performance.now();
+    let frameId;
+
+    const tick = (now) => {
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const video = videoRef.current;
+      const isVideoDriving =
+        video &&
+        video.src &&
+        !video.paused &&
+        Number.isFinite(video.currentTime);
+
+      if (!isVideoDriving && !scrubbingRef.current) {
+        setCurrentTime((prev) => {
+          const next = prev + delta;
+          if (next >= duration) {
+            setIsPlaying(false);
+            return duration;
+          }
+          return next;
+        });
+      }
+
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying, duration]);
 
   const seekTo = useCallback(
     (seconds, clipStart, sourceStart, speed = 1) => {

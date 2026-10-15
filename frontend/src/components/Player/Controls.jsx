@@ -2,6 +2,7 @@ import { Icons } from "../../assets/icons";
 import "./Player.css";
 
 const formatTimecode = (secs) => {
+  if (!Number.isFinite(secs) || secs < 0) secs = 0;
   const hours = Math.floor(secs / 3600);
   const minutes = Math.floor((secs % 3600) / 60);
   const seconds = Math.floor(secs % 60);
@@ -15,6 +16,7 @@ export default function Controls({
   currentTime,
   duration,
   onTogglePlay,
+  onStop,
   onSeek,
 }) {
   return (
@@ -32,10 +34,19 @@ export default function Controls({
       <button
         className="play-btn"
         onClick={onTogglePlay}
-        title={isPlaying ? "Pause" : "Play"}
+        title={isPlaying ? "Pause (Space)" : "Play (Space)"}
       >
         {isPlaying ? <Icons.Pause /> : <Icons.Play />}
       </button>
+      {onStop && (
+        <button
+          className="control-btn"
+          onClick={onStop}
+          title="Stop & Reset to Start"
+        >
+          <Icons.Stop />
+        </button>
+      )}
       <button
         className="control-btn"
         onClick={() => onSeek(currentTime + 5)}

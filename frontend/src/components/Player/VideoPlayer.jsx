@@ -57,8 +57,13 @@ export default function VideoPlayer({
         // Ignore seek failures (e.g. metadata not loaded yet).
       }
     } else if (video.readyState >= 1) {
-      if (Math.abs(video.currentTime - desiredTime) > 0.05) {
-        video.currentTime = desiredTime;
+      // While paused: sync frame when scrubbing or seeking.
+      // While playing: do NOT micro-seek video on every frame (it stutters video and video audio)!
+      const threshold = isPlaying ? 1.2 : 0.05;
+      if (Math.abs(video.currentTime - desiredTime) > threshold) {
+        try {
+          video.currentTime = desiredTime;
+        } catch {}
       }
     }
 

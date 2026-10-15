@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Header from "./components/Header/Header";
 import VideoPlayer from "./components/Player/VideoPlayer";
 import Controls from "./components/Player/Controls";
@@ -6,6 +6,8 @@ import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
+import useAudioMixer from "./hooks/useAudioMixer";
+import { isAudioFile, loadAudioFile } from "./utils/audioUtils";
 import { videoApi } from "./services/api";
 import "./App.css";
 
@@ -18,24 +20,32 @@ const DEFAULT_TRANSFORM = {
 
 export default function App() {
   const fileInputRef = useRef(null);
+  const audioInputRef = useRef(null);
   const [status, setStatus] = useState("");
 
   const player = useVideoPlayer();
   const { setVideoSource, setIsPlaying, setDuration } = player;
   const timeline = useTimeline({ videoDuration: player.duration });
-  const timelineEnd = timeline.clips.reduce(
-    (end, clip) => Math.max(end, clip.start + clip.duration),
-    0
-  );
-  const timelineDuration = Math.max(player.duration, timelineEnd + 1, 120);
 
-  // Clips can grow past the player duration (e.g. slowing a part to 0.5x
-  // doubles its timeline length). Keep the seekable duration covering them.
+  // Manage frontend-level background audio track playback in sync with playhead
+  useAudioMixer({
+    clips: timeline.clips,
+    tracks: timeline.tracks,
+    currentTime: player.currentTime,
+    isPlaying: player.isPlaying,
+    isScrubbing: player.isScrubbing(),
+  });
+  const timelineEnd = timeline.clips.reduce((end, clip) => {
+    const clipEnd = clip.start + clip.duration;
+    return Number.isFinite(clipEnd) ? Math.max(end, clipEnd) : end;
+  }, 0);
+  const timelineDuration = Math.max(timelineEnd > 0 ? timelineEnd + 5 : 60, 60);
+
   useEffect(() => {
-    if (timelineEnd + 1 > player.duration) {
-      setDuration(timelineEnd + 1);
+    if (timelineDuration !== player.duration) {
+      setDuration(timelineDuration);
     }
-  }, [timelineEnd, player.duration, setDuration]);
+  }, [timelineDuration, player.duration, setDuration]);
 
   const selectedClip = timeline.clips.find(
     (clip) => clip.id === timeline.selectedClipId
@@ -49,6 +59,7 @@ export default function App() {
   const activeClip = timeline.clips
     .filter(
       (clip) =>
+        clip.type !== "audio" &&
         visibleTrackIds.has(clip.trackId) &&
         player.currentTime >= clip.start - 0.001 &&
         player.currentTime < clip.start + clip.duration
@@ -83,12 +94,52 @@ export default function App() {
     event.target.value = "";
     if (!files.length) return;
 
-    let nextStart = timelineEnd;
+    // Dedicated target video track & starting position calculation
+    const videoTracks = timeline.tracks.filter((t) => t.type !== "audio");
+    const primaryVideoTrack =
+      videoTracks.find((t) => t.id === 1) ||
+      videoTracks[videoTracks.length - 1] ||
+      videoTracks[0];
+    const targetVideoTrackId = primaryVideoTrack ? primaryVideoTrack.id : 1;
+
+    const existingVideoClips = timeline.clips.filter(
+      (c) => c.trackId === targetVideoTrackId && c.type !== "audio"
+    );
+    let nextVideoStart = existingVideoClips.reduce(
+      (end, c) => Math.max(end, c.start + c.duration),
+      0
+    );
+
+    // Dedicated target audio track & starting position calculation
+    const audioTrack =
+      timeline.tracks.find((t) => t.type === "audio") ||
+      timeline.tracks[timeline.tracks.length - 1];
+    const audioTrackId = audioTrack ? audioTrack.id : 101;
+    const existingAudioClips = timeline.clips.filter((c) => c.trackId === audioTrackId);
+    let nextAudioStart = existingAudioClips.reduce(
+      (end, c) => Math.max(end, c.start + c.duration),
+      0
+    );
+
     const importedClips = [];
 
     for (const [index, file] of files.entries()) {
       try {
-        const media = await player.loadVideo(file);
+        const isAudio = isAudioFile(file);
+        let media;
+        let trackId = targetVideoTrackId;
+        let clipStart = 0;
+
+        if (isAudio) {
+          media = await loadAudioFile(file);
+          trackId = audioTrackId;
+          clipStart = nextAudioStart;
+        } else {
+          media = await player.loadVideo(file);
+          trackId = targetVideoTrackId;
+          clipStart = nextVideoStart;
+        }
+
         if (!media) continue;
 
         let filename = file.name;
@@ -99,24 +150,36 @@ export default function App() {
           console.warn(`Could not upload ${file.name} to the backend`, error);
         }
 
+        const safeDuration =
+          Number.isFinite(media.duration) && media.duration > 0
+            ? media.duration
+            : 30;
+
         const clip = {
           id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-          trackId: 1,
+          trackId,
+          type: isAudio ? "audio" : "video",
           title: file.name,
           filename,
           file,
           sourceUrl: media.url,
           sourceStart: 0,
           sourceMin: 0,
-          sourceMax: media.duration,
+          sourceMax: safeDuration,
           speed: 1,
+          volume: 1,
           ...DEFAULT_TRANSFORM,
-          start: nextStart,
-          duration: media.duration,
+          start: clipStart,
+          duration: safeDuration,
         };
         timeline.addClip(clip);
         importedClips.push(clip);
-        nextStart += media.duration;
+
+        if (isAudio) {
+          nextAudioStart += safeDuration;
+        } else {
+          nextVideoStart += safeDuration;
+        }
       } catch (error) {
         console.error(error);
         setStatus(`Could not read ${file.name}`);
@@ -124,11 +187,16 @@ export default function App() {
     }
 
     if (importedClips.length) {
-      timeline.selectClip(importedClips[0].id);
-      player.setDuration(Math.max(120, nextStart + 1));
-      player.seekTo(importedClips[0].start);
+      const firstClip = importedClips[0];
+      timeline.selectClip(firstClip.id);
+      player.seekTo(
+        firstClip.start,
+        firstClip.start,
+        firstClip.sourceStart || 0,
+        firstClip.speed || 1
+      );
       setStatus(
-        `Added ${importedClips.length} video${importedClips.length === 1 ? "" : "s"} to the timeline`
+        `Added ${importedClips.length} track item${importedClips.length === 1 ? "" : "s"} to the timeline`
       );
     }
   };
@@ -139,7 +207,13 @@ export default function App() {
       return;
     }
 
-    const segments = [...visibleClips]
+    const videoClips = visibleClips.filter((c) => c.type !== "audio");
+    if (!videoClips.length) {
+      setStatus("Add a video clip to export to server");
+      return;
+    }
+
+    const segments = [...videoClips]
       .filter((clip) => clip.filename && clip.duration > 0)
       .sort((a, b) => a.start - b.start)
       .map((clip) => ({
@@ -247,29 +321,51 @@ export default function App() {
     player.handleTimeUpdate(activeClip.start, sourceStart, activeSpeed);
   };
 
-  const handleTogglePlay = () => {
-    if (activeClip) {
-      player.togglePlay();
+  const handleTogglePlay = useCallback(() => {
+    if (player.isPlaying) {
+      player.setIsPlaying(false);
+      player.videoRef.current?.pause();
       return;
     }
 
-    const nextClip = timeline.clips
-      .filter(
-        (clip) =>
-          visibleTrackIds.has(clip.trackId) && clip.start >= player.currentTime
-      )
-      .sort((a, b) => a.start - b.start)[0];
-
-    if (nextClip) {
-      player.seekTo(
-        nextClip.start,
-        nextClip.start,
-        nextClip.sourceStart || 0,
-        nextClip.speed || 1
-      );
+    if (activeClip) {
       player.setIsPlaying(true);
+      player.videoRef.current?.play().catch(() => {});
+      return;
     }
-  };
+
+    // If playhead is over an audio clip or within timeline, start playing
+    if (player.currentTime < timelineDuration) {
+      player.setIsPlaying(true);
+      return;
+    }
+
+    // At the end of timeline, wrap to 0 and play
+    player.seekTo(0);
+    player.setIsPlaying(true);
+  }, [player, activeClip, timelineDuration]);
+
+  // Spacebar to play/pause anywhere in the editor
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (
+        e.code === "Space" &&
+        e.target.tagName !== "INPUT" &&
+        e.target.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault();
+        handleTogglePlay();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleTogglePlay]);
+
+  const handleStop = useCallback(() => {
+    player.setIsPlaying(false);
+    player.videoRef.current?.pause();
+    player.seekTo(0);
+  }, [player]);
 
   const handleVideoEnded = () => {
     if (!activeClip) {
@@ -330,15 +426,26 @@ export default function App() {
     <div className="editor-container">
       <Header
         status={status}
-        hasVideo={timeline.clips.length > 0}
+        hasVideo={timeline.clips.some((c) => c.type !== "audio")}
+        hasAudio={timeline.clips.some((c) => c.type === "audio")}
         onImport={() => fileInputRef.current?.click()}
+        onImportAudio={() => audioInputRef.current?.click()}
         onExport={handleExportToServer}
       />
 
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,audio/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/*"
         multiple
         style={{ display: "none" }}
         onChange={handleFileChange}
@@ -369,6 +476,7 @@ export default function App() {
             currentTime={player.currentTime}
             duration={timelineDuration}
             onTogglePlay={handleTogglePlay}
+            onStop={handleStop}
             onSeek={player.seekTo}
           />
         </div>
@@ -407,6 +515,7 @@ export default function App() {
         onAddMarker={() => timeline.addMarker(player.currentTime)}
         onToggleTrackLock={timeline.toggleTrackLock}
         onToggleTrackVisible={timeline.toggleTrackVisible}
+        onSetTrackVolume={timeline.setTrackVolume}
       />
     </div>
   );
