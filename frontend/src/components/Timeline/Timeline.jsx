@@ -20,6 +20,7 @@ export default function Timeline({
   onSnapTime,
   onSelectClip,
   onMoveClip,
+  onMoveClipTrack,
   onAddTrack,
   onToggleSnap,
   onSplitClip,
@@ -120,15 +121,18 @@ export default function Timeline({
           <Ruler duration={duration} pixelsPerSecond={PIXELS_PER_SECOND} />
 
           {/* Track Rows */}
-          {tracks.map((track) => (
+          {tracks.map((track, index) => (
             <TrackLane
               key={track.id}
               track={track}
+              trackIds={tracks.map((t) => t.id)}
+              trackIndex={index}
               clips={clips}
               selectedClipId={selectedClipId}
               pixelsPerSecond={PIXELS_PER_SECOND}
               onSelectClip={onSelectClip}
               onMoveClip={onMoveClip}
+              onMoveClipTrack={onMoveClipTrack}
             />
           ))}
         </div>

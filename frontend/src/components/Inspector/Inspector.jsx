@@ -1,4 +1,5 @@
 import TrimControls from "./TrimControls";
+import SpeedControls from "./SpeedControls";
 import Transform from "./Transform";
 import { videoApi } from "../../services/api";
 import "./Inspector.css";
@@ -13,14 +14,12 @@ const RESOLUTIONS = [
 export default function Inspector({
   videoFile,
   selectedClip,
-  clips,
   transform,
   onTransformChange,
   onUpdateClip,
+  onSeekClip,
   onStatus,
   onVideoProcessed,
-  renderedVideoUrl,
-  onRenderedVideoUrl,
 }) {
   const filename = selectedClip?.filename || videoFile?.name;
   const backendBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -32,7 +31,7 @@ export default function Inspector({
       const data = await videoApi.trim({
         filename,
         start: selectedClip.sourceStart || 0,
-        duration: selectedClip.duration,
+        duration: selectedClip.duration * (selectedClip.speed || 1),
       });
       onStatus(`Trimmed: ${data.filename || filename}`);
       if (data.url && onVideoProcessed) {
@@ -45,7 +44,7 @@ export default function Inspector({
   };
 
   const handleRotate = async (angle) => {
-    if (!filename) return;
+    if (!selectedClip || !filename) return;
     onTransformChange({
       ...transform,
       rotation: (transform.rotation + angle) % 360,
@@ -78,32 +77,6 @@ export default function Inspector({
     }
   };
 
-  const handleMerge = async () => {
-    const segments = clips
-      .filter((clip) => clip.filename && clip.duration > 0)
-      .sort((a, b) => a.start - b.start)
-      .map((clip) => ({
-        filename: clip.filename,
-        start: clip.sourceStart || 0,
-        duration: clip.duration,
-      }));
-
-    if (!segments.length) {
-      onStatus("No video segments to render");
-      return;
-    }
-
-    onStatus("Rendering timeline (removed sections are excluded)...");
-    try {
-      const data = await videoApi.merge(segments);
-      onStatus(`Merged: ${data.filename}`);
-      if (data.url) onRenderedVideoUrl(`${backendBase}${data.url}`);
-    } catch (err) {
-      console.error(err);
-      onStatus("Merge failed");
-    }
-  };
-
   return (
     <aside className="inspector-panel">
       <div className="inspector-heading">Inspector &amp; Edit Tools</div>
@@ -116,12 +89,25 @@ export default function Inspector({
       />
 
       <div className="inspector-section">
+        <div className="section-title">Speed</div>
+        <SpeedControls
+          selectedClip={selectedClip}
+          onUpdateClip={onUpdateClip}
+          onSeek={onSeekClip}
+        />
+      </div>
+
+      <div className="inspector-section">
         <div className="section-title">Rotate &amp; Flip</div>
         <Transform
           transform={transform}
           onRotate={handleRotate}
           onChange={onTransformChange}
+          disabled={!selectedClip}
         />
+        {!selectedClip && (
+          <p className="muted-note">Select a clip to rotate or flip just that part.</p>
+        )}
       </div>
 
       <div className="inspector-section">
@@ -140,29 +126,6 @@ export default function Inspector({
         </div>
       </div>
 
-      <div className="inspector-section">
-        <div className="section-title">Render Timeline</div>
-        <button
-          className="preset-btn wide"
-          onClick={handleMerge}
-          disabled={!clips.length || clips.some((clip) => !clip.filename)}
-        >
-          Render {clips.length} kept segment{clips.length === 1 ? "" : "s"}
-        </button>
-        {!clips.length && (
-          <p className="muted-note">Add a video clip to render the timeline.</p>
-        )}
-        {renderedVideoUrl && (
-          <a
-            className="rendered-video-link"
-            href={renderedVideoUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open rendered video
-          </a>
-        )}
-      </div>
     </aside>
   );
 }

@@ -9,25 +9,33 @@ import useTimeline from "./hooks/useTimeline";
 import { videoApi } from "./services/api";
 import "./App.css";
 
+const DEFAULT_TRANSFORM = {
+  rotation: 0,
+  flipH: false,
+  flipV: false,
+  aspectRatio: "16:9",
+};
+
 export default function App() {
   const fileInputRef = useRef(null);
   const [status, setStatus] = useState("");
-  const [renderedVideoUrl, setRenderedVideoUrl] = useState("");
-  const [transform, setTransform] = useState({
-    rotation: 0,
-    flipH: false,
-    flipV: false,
-    aspectRatio: "16:9",
-  });
 
   const player = useVideoPlayer();
-  const { setVideoSource, setIsPlaying } = player;
+  const { setVideoSource, setIsPlaying, setDuration } = player;
   const timeline = useTimeline({ videoDuration: player.duration });
   const timelineEnd = timeline.clips.reduce(
     (end, clip) => Math.max(end, clip.start + clip.duration),
     0
   );
   const timelineDuration = Math.max(player.duration, timelineEnd + 1, 120);
+
+  // Clips can grow past the player duration (e.g. slowing a part to 0.5x
+  // doubles its timeline length). Keep the seekable duration covering them.
+  useEffect(() => {
+    if (timelineEnd + 1 > player.duration) {
+      setDuration(timelineEnd + 1);
+    }
+  }, [timelineEnd, player.duration, setDuration]);
 
   const selectedClip = timeline.clips.find(
     (clip) => clip.id === timeline.selectedClipId
@@ -42,13 +50,28 @@ export default function App() {
     .filter(
       (clip) =>
         visibleTrackIds.has(clip.trackId) &&
-        player.currentTime >= clip.start &&
+        player.currentTime >= clip.start - 0.001 &&
         player.currentTime < clip.start + clip.duration
     )
     .sort((a, b) =>
       timeline.tracks.findIndex((track) => track.id === a.trackId) -
       timeline.tracks.findIndex((track) => track.id === b.trackId)
     )[0];
+
+  // Rotation / flip / aspect are per-clip: the preview follows the clip under
+  // the playhead, while the Inspector edits the selected clip.
+  const selectedTransform = {
+    rotation: selectedClip?.rotation ?? DEFAULT_TRANSFORM.rotation,
+    flipH: selectedClip?.flipH ?? DEFAULT_TRANSFORM.flipH,
+    flipV: selectedClip?.flipV ?? DEFAULT_TRANSFORM.flipV,
+    aspectRatio: selectedClip?.aspectRatio ?? DEFAULT_TRANSFORM.aspectRatio,
+  };
+  const activeTransform = {
+    rotation: activeClip?.rotation ?? DEFAULT_TRANSFORM.rotation,
+    flipH: activeClip?.flipH ?? DEFAULT_TRANSFORM.flipH,
+    flipV: activeClip?.flipV ?? DEFAULT_TRANSFORM.flipV,
+    aspectRatio: activeClip?.aspectRatio ?? DEFAULT_TRANSFORM.aspectRatio,
+  };
 
   useEffect(() => {
     setVideoSource(activeClip?.file, activeClip?.sourceUrl);
@@ -86,6 +109,8 @@ export default function App() {
           sourceStart: 0,
           sourceMin: 0,
           sourceMax: media.duration,
+          speed: 1,
+          ...DEFAULT_TRANSFORM,
           start: nextStart,
           duration: media.duration,
         };
@@ -120,7 +145,8 @@ export default function App() {
       .map((clip) => ({
         filename: clip.filename,
         start: clip.sourceStart || 0,
-        duration: clip.duration,
+        duration: clip.duration * (clip.speed || 1),
+        speed: clip.speed || 1,
       }));
 
     if (!segments.length || segments.length !== visibleClips.length) {
@@ -131,8 +157,6 @@ export default function App() {
     setStatus("Rendering timeline with cuts applied...");
     try {
       const data = await videoApi.merge(segments);
-      const backendBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      if (data.url) setRenderedVideoUrl(`${backendBase}${data.url}`);
       setStatus(`Rendered: ${data.filename}`);
     } catch (error) {
       console.error(error);
@@ -142,18 +166,21 @@ export default function App() {
 
   const handleVideoProcessed = (newUrl, newFilename) => {
     if (!selectedClip) return;
+    const speed = selectedClip.speed || 1;
     const tempVideo = document.createElement("video");
     tempVideo.preload = "metadata";
     tempVideo.src = newUrl;
     tempVideo.onloadedmetadata = () => {
+      const newLen =
+        tempVideo.duration || selectedClip.duration * speed;
       timeline.updateClip(selectedClip.id, {
         title: newFilename || selectedClip.title,
         filename: newFilename || selectedClip.filename,
         sourceUrl: newUrl,
         sourceStart: 0,
         sourceMin: 0,
-        sourceMax: tempVideo.duration || selectedClip.duration,
-        duration: tempVideo.duration || selectedClip.duration,
+        sourceMax: newLen,
+        duration: newLen / speed,
       });
     };
   };
@@ -161,7 +188,14 @@ export default function App() {
   const handleSelectClip = (clipId) => {
     const clip = timeline.clips.find((item) => item.id === clipId);
     timeline.selectClip(clipId);
-    if (clip) player.seekTo(clip.start);
+    if (clip) {
+      player.seekTo(
+        clip.start,
+        clip.start,
+        clip.sourceStart || 0,
+        clip.speed || 1
+      );
+    }
   };
 
   const handleMoveClip = (clipId, desiredStart) => {
@@ -177,23 +211,32 @@ export default function App() {
   const handleTimeUpdate = () => {
     if (!activeClip || player.isScrubbing()) return;
 
+    const activeSpeed = activeClip.speed || 1;
     const sourceStart = activeClip.sourceStart || 0;
     const sourceTime = player.videoRef.current?.currentTime;
     if (!Number.isFinite(sourceTime)) return;
 
-    const timelineTime = activeClip.start + sourceTime - sourceStart;
+    const timelineTime =
+      activeClip.start + (sourceTime - sourceStart) / activeSpeed;
     const clipEnd = activeClip.start + activeClip.duration;
-    if (player.isPlaying && timelineTime >= clipEnd) {
+    // Hand off just before the exact end: timeupdate events only fire a few
+    // times per second, so waiting for the precise boundary overshoots it.
+    if (player.isPlaying && timelineTime >= clipEnd - 1 / 30) {
       const nextClip = timeline.clips
         .filter(
           (clip) =>
             visibleTrackIds.has(clip.trackId) &&
-            clip.start >= clipEnd - 0.001
+            clip.start >= clipEnd - 0.05
         )
         .sort((a, b) => a.start - b.start)[0];
 
       if (nextClip) {
-        player.seekTo(nextClip.start);
+        player.seekTo(
+          nextClip.start,
+          nextClip.start,
+          nextClip.sourceStart || 0,
+          nextClip.speed || 1
+        );
       } else {
         player.seekTo(clipEnd);
         player.setIsPlaying(false);
@@ -201,7 +244,7 @@ export default function App() {
       return;
     }
 
-    player.handleTimeUpdate(activeClip.start, sourceStart);
+    player.handleTimeUpdate(activeClip.start, sourceStart, activeSpeed);
   };
 
   const handleTogglePlay = () => {
@@ -218,7 +261,12 @@ export default function App() {
       .sort((a, b) => a.start - b.start)[0];
 
     if (nextClip) {
-      player.seekTo(nextClip.start);
+      player.seekTo(
+        nextClip.start,
+        nextClip.start,
+        nextClip.sourceStart || 0,
+        nextClip.speed || 1
+      );
       player.setIsPlaying(true);
     }
   };
@@ -237,7 +285,12 @@ export default function App() {
       .sort((a, b) => a.start - b.start)[0];
 
     if (nextClip) {
-      player.seekTo(nextClip.start);
+      player.seekTo(
+        nextClip.start,
+        nextClip.start,
+        nextClip.sourceStart || 0,
+        nextClip.speed || 1
+      );
     } else {
       player.setIsPlaying(false);
     }
@@ -296,14 +349,16 @@ export default function App() {
           <VideoPlayer
             videoRef={player.videoRef}
             videoUrl={activeClip?.sourceUrl || null}
+            clipId={activeClip?.id || null}
             clipStart={activeClip?.start || 0}
             sourceStart={activeClip?.sourceStart || 0}
+            speed={activeClip?.speed || 1}
             currentTime={player.currentTime}
             isPlaying={player.isPlaying}
-            rotation={transform.rotation}
-            flipH={transform.flipH}
-            flipV={transform.flipV}
-            aspectRatio={transform.aspectRatio}
+            rotation={activeTransform.rotation}
+            flipH={activeTransform.flipH}
+            flipV={activeTransform.flipV}
+            aspectRatio={activeTransform.aspectRatio}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleVideoEnded}
             onTogglePlay={handleTogglePlay}
@@ -321,14 +376,13 @@ export default function App() {
         <Inspector
           videoFile={selectedClip?.file}
           selectedClip={selectedClip}
-          clips={visibleClips}
-          transform={transform}
-          onTransformChange={setTransform}
-          onUpdateClip={timeline.updateClip}
+          transform={selectedTransform}
+          onTransformChange={(next) =>
+            selectedClip && timeline.updateClip(selectedClip.id, next)
+          }
           onStatus={setStatus}
           onVideoProcessed={handleVideoProcessed}
-          renderedVideoUrl={renderedVideoUrl}
-          onRenderedVideoUrl={setRenderedVideoUrl}
+          onSeekClip={(...args) => player.seekTo(...args)}
         />
       </div>
 
@@ -345,6 +399,7 @@ export default function App() {
         onSnapTime={timeline.snapTime}
         onSelectClip={handleSelectClip}
         onMoveClip={handleMoveClip}
+        onMoveClipTrack={timeline.moveClipToTrack}
         onAddTrack={timeline.addTrack}
         onToggleSnap={() => timeline.setIsSnapping(!timeline.isSnapping)}
         onSplitClip={handleSplitClip}

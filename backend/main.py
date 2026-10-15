@@ -132,6 +132,7 @@ class MergeSegment(BaseModel):
     filename: str
     start: float = Field(default=0, ge=0)
     duration: float = Field(gt=0)
+    speed: float = Field(default=1, gt=0)
 
 
 class MergeRequest(BaseModel):
@@ -167,6 +168,7 @@ async def merge_endpoint(req: MergeRequest):
                         "path": input_path,
                         "start": segment.start,
                         "duration": segment.duration,
+                        "speed": segment.speed,
                     }
                 )
             ffmeg_service.merge_video_segments(segments, output_path)

@@ -43,13 +43,16 @@ export default function useVideoPlayer() {
     setVideoUrl(url || null);
   }, []);
 
-  const handleTimeUpdate = useCallback((timelineStart = 0, sourceStart = 0) => {
-    if (videoRef.current && !scrubbingRef.current) {
-      setCurrentTime(
-        timelineStart + videoRef.current.currentTime - sourceStart
-      );
-    }
-  }, []);
+  const handleTimeUpdate = useCallback(
+    (timelineStart = 0, sourceStart = 0, speed = 1) => {
+      if (videoRef.current && !scrubbingRef.current) {
+        setCurrentTime(
+          timelineStart + (videoRef.current.currentTime - sourceStart) / speed
+        );
+      }
+    },
+    []
+  );
 
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -63,8 +66,32 @@ export default function useVideoPlayer() {
   }, []);
 
   const seekTo = useCallback(
-    (seconds) => {
-      setCurrentTime(Math.max(0, Math.min(seconds, duration)));
+    (seconds, clipStart, sourceStart, speed = 1) => {
+      const clamped = Math.max(0, Math.min(seconds, duration));
+      setCurrentTime(clamped);
+      const video = videoRef.current;
+      if (
+        video &&
+        clipStart !== undefined &&
+        sourceStart !== undefined &&
+        Number.isFinite(video.duration) &&
+        video.duration > 0
+      ) {
+        const desired = Math.max(
+          0,
+          Math.min(
+            sourceStart + (clamped - clipStart) * speed,
+            video.duration - 0.03
+          )
+        );
+        if (Math.abs(video.currentTime - desired) > 0.03) {
+          try {
+            video.currentTime = desired;
+          } catch {
+            // Ignore seek failures (e.g. metadata not loaded yet).
+          }
+        }
+      }
     },
     [duration]
   );

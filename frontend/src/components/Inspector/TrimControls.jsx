@@ -8,8 +8,9 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
     );
   }
 
+  const speed = selectedClip.speed || 1;
   const sourceStart = selectedClip.sourceStart || 0;
-  const sourceEnd = sourceStart + selectedClip.duration;
+  const sourceEnd = sourceStart + selectedClip.duration * speed;
   const sourceMin = selectedClip.sourceMin ?? 0;
   const sourceMax = Math.max(
     sourceEnd,
@@ -17,7 +18,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
   );
   const maxSourceStart = Math.max(
     sourceMin,
-    sourceMax - selectedClip.duration
+    sourceMax - selectedClip.duration * speed
   );
 
   const handleStartChange = (event) => {
@@ -26,7 +27,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
     const start = Math.max(sourceMin, Math.min(nextStart, sourceEnd - 0.1));
     onUpdateClip(selectedClip.id, {
       sourceStart: start,
-      duration: sourceEnd - start,
+      duration: (sourceEnd - start) / speed,
     });
   };
 
@@ -37,7 +38,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
       sourceStart + 0.1,
       Math.min(nextEnd, sourceMax)
     );
-    onUpdateClip(selectedClip.id, { duration: end - sourceStart });
+    onUpdateClip(selectedClip.id, { duration: (end - sourceStart) / speed });
   };
 
   const handleSliderChange = (event) => {
@@ -90,7 +91,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
       </label>
 
       <div className="trim-meta">
-        Duration: {selectedClip.duration.toFixed(2)}s
+        Duration: {selectedClip.duration.toFixed(2)}s ({speed}x speed)
       </div>
 
       <button className="preset-btn wide" onClick={onApply}>

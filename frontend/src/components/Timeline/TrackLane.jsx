@@ -2,11 +2,14 @@ import Clip from "./Clip";
 
 export default function TrackLane({
   track,
+  trackIds,
+  trackIndex,
   clips,
   selectedClipId,
   pixelsPerSecond,
   onSelectClip,
   onMoveClip,
+  onMoveClipTrack,
 }) {
   return (
     <div className="track-lane">
@@ -20,8 +23,11 @@ export default function TrackLane({
             dimmed={!track.visible}
             locked={track.locked}
             pixelsPerSecond={pixelsPerSecond}
+            trackIds={trackIds}
+            trackIndex={trackIndex}
             onSelect={onSelectClip}
             onMove={onMoveClip}
+            onMoveTrack={onMoveClipTrack}
           />
         ))}
     </div>

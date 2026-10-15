@@ -258,6 +258,18 @@
   pointer-events: none;
 }
 
+.clip-speed {
+  font-size: 10px;
+  font-weight: 700;
+  color: #79c0ff;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 4px;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
 .clip-handle {
   width: 4px;
   height: 100%;

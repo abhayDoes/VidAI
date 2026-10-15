@@ -52,10 +52,11 @@ export default function useTimeline({ videoDuration }) {
       const firstDuration = atTime - targetClip.start;
       const secondDuration = targetClip.duration - firstDuration;
 
-      const newId = Date.now();
+      const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const speed = targetClip.speed || 1;
       const sourceStart = targetClip.sourceStart || 0;
-      const splitSourceTime = sourceStart + firstDuration;
-      const sourceEnd = sourceStart + targetClip.duration;
+      const splitSourceTime = sourceStart + firstDuration * speed;
+      const sourceEnd = sourceStart + targetClip.duration * speed;
       const clip1 = {
         ...targetClip,
         duration: firstDuration,
@@ -63,8 +64,8 @@ export default function useTimeline({ videoDuration }) {
         sourceMax: splitSourceTime,
       };
       const clip2 = {
+        ...targetClip,
         id: newId,
-        trackId: targetClip.trackId,
         title: `${targetClip.title} (Part 2)`,
         start: atTime,
         duration: secondDuration,
@@ -133,6 +134,19 @@ export default function useTimeline({ videoDuration }) {
     );
   }, []);
 
+  const moveClipToTrack = useCallback(
+    (clipId, trackId) => {
+      const target = tracks.find((t) => t.id === trackId);
+      if (!target || target.locked) return;
+      setClips((prev) =>
+        prev.map((c) =>
+          c.id === clipId && c.trackId !== trackId ? { ...c, trackId } : c
+        )
+      );
+    },
+    [tracks]
+  );
+
   const snapTime = useCallback(
     (rawTime, ignoreClipId = null) => {
       if (!isSnapping) return rawTime;
@@ -177,6 +191,7 @@ export default function useTimeline({ videoDuration }) {
     addMarker,
     deleteClip,
     updateClip,
+    moveClipToTrack,
     selectClip: setSelectedClipId,
     snapTime,
   };

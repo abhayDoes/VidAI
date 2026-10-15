@@ -100,10 +100,24 @@ def merge_videos(input_paths, output_path):
     return output_path
 
 
+def _atempo_values(speed):
+    """Split a speed factor into atempo values within the 0.5-2.0 range."""
+  if not segments:
+       values = []
+    remaining = float(speed)
+    while remaining > 2.0 + 1e-9:
+        values.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5 - 1e-9:
+        values.append(0.5)
+        remaining /= 0.5
+    values.append(remaining)
+    return values
+
+
 def merge_video_segments(segments, output_path):
     """Render retained source ranges in order, trimming cut/deleted sections."""
-    if not segments:
-        raise ValueError("At least one video segment is required")
+       raise ValueError("At least one video segment is required")
 
     first_probe = ffmpeg.probe(segments[0]["path"])
     first_video = next(
@@ -121,14 +135,18 @@ def merge_video_segments(segments, output_path):
         path = segment["path"]
         start = max(0, float(segment["start"]))
         duration = float(segment["duration"])
-        if duration <= 0:
+        speed = float(segment.get("speed", 1) or 1)
+        if duration <= 0 or speed <= 0:
             continue
+        target_duration = duration / speed
 
         probe = ffmpeg.probe(path)
         source = ffmpeg.input(path, ss=start, t=duration)
+        video = source.video.filter("setpts", "PTS-STARTPTS")
+        if abs(speed - 1.0) > 1e-6:
+            video = video.filter("setpts", f"{1.0 / speed}*PTS")
         video = (
-            source.video
-            .filter("setpts", "PTS-STARTPTS")
+            video
             .filter("scale", width, height, force_original_aspect_ratio="decrease")
             .filter("pad", width, height, "(ow-iw)/2", "(oh-ih)/2")
             .filter("setsar", 1)
@@ -143,8 +161,6 @@ def merge_video_segments(segments, output_path):
                 .filter("asetpts", "PTS-STARTPTS")
                 .filter("aresample", 44100)
                 .filter("aformat", sample_rates=44100, channel_layouts="stereo")
-                .filter("apad", pad_dur=duration)
-                .filter("atrim", duration=duration)
             )
         else:
             silence = ffmpeg.input(
@@ -153,6 +169,13 @@ def merge_video_segments(segments, output_path):
                 t=duration,
             )
             audio = silence.audio.filter("asetpts", "PTS-STARTPTS")
+        for tempo in _atempo_values(speed):
+            audio = audio.filter("atempo", str(tempo))
+        audio = (
+            audio
+            .filter("apad", pad_dur=target_duration)
+            .filter("atrim", duration=target_duration)
+        )
 
         normalized_streams.append((video, audio))
 

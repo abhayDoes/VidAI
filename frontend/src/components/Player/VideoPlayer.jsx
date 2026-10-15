@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const ASPECT_CLASS = {
   "16:9": "aspect-16-9",
@@ -9,8 +9,10 @@ const ASPECT_CLASS = {
 export default function VideoPlayer({
   videoRef,
   videoUrl,
+  clipId = null,
   clipStart = 0,
   sourceStart = 0,
+  speed = 1,
   currentTime = 0,
   isPlaying = false,
   rotation,
@@ -22,16 +24,40 @@ export default function VideoPlayer({
   onTogglePlay,
   onImportClick,
 }) {
+  const lastClipIdRef = useRef(clipId);
+  const lastSpeedRef = useRef(speed);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !videoUrl) return;
 
-    if (video.readyState >= 1) {
-      const desiredTime = Math.max(
-        0,
-        sourceStart + currentTime - clipStart
-      );
-      if (Math.abs(video.currentTime - desiredTime) > 0.2) {
+    const desiredTime = Math.max(
+      0,
+      sourceStart + (currentTime - clipStart) * speed
+    );
+    const clipChanged =
+      lastClipIdRef.current !== clipId || lastSpeedRef.current !== speed;
+    lastClipIdRef.current = clipId;
+    lastSpeedRef.current = speed;
+
+    if (Number.isFinite(speed) && speed > 0) {
+      video.playbackRate = speed;
+    }
+
+    if (clipChanged) {
+      // Switched to a different timeline clip: seek exactly, even when the
+      // source file is the same (e.g. the two halves of a split clip).
+      try {
+        const maxTime =
+          Number.isFinite(video.duration) && video.duration > 0
+            ? video.duration - 0.03
+            : desiredTime;
+        video.currentTime = Math.max(0, Math.min(desiredTime, maxTime));
+      } catch {
+        // Ignore seek failures (e.g. metadata not loaded yet).
+      }
+    } else if (video.readyState >= 1) {
+      if (Math.abs(video.currentTime - desiredTime) > 0.05) {
         video.currentTime = desiredTime;
       }
     }
@@ -41,7 +67,7 @@ export default function VideoPlayer({
     } else {
       video.pause();
     }
-  }, [videoRef, videoUrl, clipStart, sourceStart, currentTime, isPlaying]);
+  }, [videoRef, videoUrl, clipId, clipStart, sourceStart, speed, currentTime, isPlaying]);
 
   const transformStyle = {
     transform: `rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${
@@ -62,9 +88,12 @@ export default function VideoPlayer({
             onTimeUpdate={onTimeUpdate}
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
+              if (Number.isFinite(speed) && speed > 0) {
+                video.playbackRate = speed;
+              }
               video.currentTime = Math.max(
                 0,
-                sourceStart + currentTime - clipStart
+                sourceStart + (currentTime - clipStart) * speed
               );
               if (isPlaying) video.play().catch(() => {});
             }}
