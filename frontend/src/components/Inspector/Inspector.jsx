@@ -1,7 +1,6 @@
 import TrimControls from "./TrimControls";
 import SpeedControls from "./SpeedControls";
 import Transform from "./Transform";
-import { videoApi } from "../../services/api";
 import "./Inspector.css";
 
 const RESOLUTIONS = [
@@ -18,64 +17,9 @@ export default function Inspector({
   onTransformChange,
   onUpdateClip,
   onSeekClip,
-  onStatus,
-  onVideoProcessed,
+  onProcessClip,
 }) {
-  const filename = selectedClip?.filename || videoFile?.name;
-  const backendBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-  const handleTrim = async () => {
-    if (!selectedClip || !filename) return;
-    onStatus("Trimming on server...");
-    try {
-      const data = await videoApi.trim({
-        filename,
-        start: selectedClip.sourceStart || 0,
-        duration: selectedClip.duration * (selectedClip.speed || 1),
-      });
-      onStatus(`Trimmed: ${data.filename || filename}`);
-      if (data.url && onVideoProcessed) {
-        onVideoProcessed(`${backendBase}${data.url}`, data.filename);
-      }
-    } catch (err) {
-      console.error(err);
-      onStatus("Trim failed");
-    }
-  };
-
-  const handleRotate = async (angle) => {
-    if (!selectedClip || !filename) return;
-    onTransformChange({
-      ...transform,
-      rotation: (transform.rotation + angle) % 360,
-    });
-    onStatus("Rotating on server...");
-    try {
-      const data = await videoApi.rotate({ filename, angle });
-      onStatus(`Rotated: ${data.filename || filename}`);
-      if (data.url && onVideoProcessed) {
-        onVideoProcessed(`${backendBase}${data.url}`, data.filename);
-      }
-    } catch (err) {
-      console.error(err);
-      onStatus("Rotate failed");
-    }
-  };
-
-  const handleResize = async (width, height) => {
-    if (!filename) return;
-    onStatus("Resizing on server...");
-    try {
-      const data = await videoApi.resize({ filename, width, height });
-      onStatus(`Resized: ${data.filename || filename}`);
-      if (data.url && onVideoProcessed) {
-        onVideoProcessed(`${backendBase}${data.url}`, data.filename);
-      }
-    } catch (err) {
-      console.error(err);
-      onStatus("Resize failed");
-    }
-  };
+  const hasVideoFile = Boolean(selectedClip?.file || videoFile);
 
   return (
     <aside className="inspector-panel">
@@ -106,7 +50,10 @@ export default function Inspector({
         key={selectedClip ? selectedClip.id : "none"}
         selectedClip={selectedClip}
         onUpdateClip={onUpdateClip}
-        onApply={handleTrim}
+        onApply={() => onProcessClip("trim", {
+          start: selectedClip?.sourceStart || 0,
+          duration: (selectedClip?.duration || 0) * (selectedClip?.speed || 1),
+        })}
       />
 
       <div className="inspector-section">
@@ -126,7 +73,9 @@ export default function Inspector({
           <>
             <Transform
               transform={transform}
-              onRotate={handleRotate}
+              onRotate={(angle) => onProcessClip("rotate", {
+                angle: ((transform.rotation + angle) % 360) || 360,
+              })}
               onChange={onTransformChange}
               disabled={!selectedClip}
             />
@@ -147,8 +96,8 @@ export default function Inspector({
               <button
                 key={r.label}
                 className="preset-btn"
-                onClick={() => handleResize(r.width, r.height)}
-                disabled={!filename || selectedClip?.type === "audio"}
+                onClick={() => onProcessClip("resize", { width: r.width, height: r.height })}
+                disabled={!hasVideoFile || selectedClip?.type === "audio"}
               >
                 {r.label}
               </button>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import useWebGpuPreview from "../../hooks/useWebGpuPreview";
 
 const ASPECT_CLASS = {
   "16:9": "aspect-16-9",
@@ -23,9 +24,13 @@ export default function VideoPlayer({
   onEnded,
   onTogglePlay,
   onImportClick,
+  gpuPreviewEnabled = false,
+  onGpuStatus,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
+  const canvasRef = useRef(null);
+  const gpuReady = useWebGpuPreview(videoRef, canvasRef, videoUrl, gpuPreviewEnabled, onGpuStatus);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -88,7 +93,7 @@ export default function VideoPlayer({
             key={videoUrl}
             ref={videoRef}
             src={videoUrl}
-            className="video-screen"
+            className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
             style={transformStyle}
             onTimeUpdate={onTimeUpdate}
             onLoadedMetadata={(event) => {
@@ -104,6 +109,12 @@ export default function VideoPlayer({
             }}
             onEnded={onEnded}
             onClick={onTogglePlay}
+          />
+          <canvas
+            ref={canvasRef}
+            className={`video-screen gpu-preview-canvas ${gpuReady ? "gpu-preview-ready" : ""}`}
+            style={transformStyle}
+            aria-hidden="true"
           />
         </div>
       ) : (

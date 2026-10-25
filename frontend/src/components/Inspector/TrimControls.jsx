@@ -95,7 +95,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
       </div>
 
       <button className="preset-btn wide" onClick={onApply}>
-        Apply Trim on Server
+        Apply Trim Locally
       </button>
     </div>
   );
