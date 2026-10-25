@@ -42,7 +42,13 @@ export default function useVideoPlayer() {
         } catch {
           // Ignore cleanup errors
         }
-        resolve({ url, duration: validDuration, file });
+        resolve({
+          url,
+          duration: validDuration,
+          width: tempVideo.videoWidth || undefined,
+          height: tempVideo.videoHeight || undefined,
+          file,
+        });
       };
 
       tempVideo.onloadedmetadata = () => {

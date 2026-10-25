@@ -8,7 +8,7 @@ import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
 import { isAudioFile, loadAudioFile } from "./utils/audioUtils";
-import { videoApi } from "./services/api";
+import { downloadFile, exportTimeline, processClip } from "./services/ffmpeg";
 import "./App.css";
 
 const DEFAULT_TRANSFORM = {
@@ -22,6 +22,7 @@ export default function App() {
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
   const [status, setStatus] = useState("");
+  const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
 
   const player = useVideoPlayer();
   const { setVideoSource, setIsPlaying, setDuration } = player;
@@ -142,14 +143,6 @@ export default function App() {
 
         if (!media) continue;
 
-        let filename = file.name;
-        try {
-          const uploaded = await videoApi.upload(file);
-          filename = uploaded.filename || filename;
-        } catch (error) {
-          console.warn(`Could not upload ${file.name} to the backend`, error);
-        }
-
         const safeDuration =
           Number.isFinite(media.duration) && media.duration > 0
             ? media.duration
@@ -160,9 +153,11 @@ export default function App() {
           trackId,
           type: isAudio ? "audio" : "video",
           title: file.name,
-          filename,
+          filename: file.name,
           file,
           sourceUrl: media.url,
+          width: media.width,
+          height: media.height,
           sourceStart: 0,
           sourceMin: 0,
           sourceMax: safeDuration,
@@ -201,7 +196,7 @@ export default function App() {
     }
   };
 
-  const handleExportToServer = async () => {
+  const handleExport = async () => {
     if (!visibleClips.length) {
       fileInputRef.current?.click();
       return;
@@ -209,54 +204,70 @@ export default function App() {
 
     const videoClips = visibleClips.filter((c) => c.type !== "audio");
     if (!videoClips.length) {
-      setStatus("Add a video clip to export to server");
+      setStatus("Add a video clip before exporting");
       return;
     }
-
-    const segments = [...videoClips]
-      .filter((clip) => clip.filename && clip.duration > 0)
-      .sort((a, b) => a.start - b.start)
-      .map((clip) => ({
-        filename: clip.filename,
-        start: clip.sourceStart || 0,
-        duration: clip.duration * (clip.speed || 1),
-        speed: clip.speed || 1,
-      }));
-
-    if (!segments.length || segments.length !== visibleClips.length) {
-      setStatus("Upload the source videos before exporting the timeline");
-      return;
-    }
-
-    setStatus("Rendering timeline with cuts applied...");
+    setStatus("Preparing FFmpeg.wasm in your browser...");
     try {
-      const data = await videoApi.merge(segments);
-      setStatus(`Rendered: ${data.filename}`);
+      const result = await exportTimeline(visibleClips, timeline.tracks, (progress) => {
+        setStatus(`Rendering locally: ${Math.round(progress * 100)}%`);
+      });
+      downloadFile(result.file);
+      setStatus("Export complete — your MP4 download has started");
     } catch (error) {
       console.error(error);
-      setStatus("Timeline render failed");
+      setStatus(error.message || "Local export failed");
     }
   };
 
-  const handleVideoProcessed = (newUrl, newFilename) => {
-    if (!selectedClip) return;
-    const speed = selectedClip.speed || 1;
-    const tempVideo = document.createElement("video");
-    tempVideo.preload = "metadata";
-    tempVideo.src = newUrl;
-    tempVideo.onloadedmetadata = () => {
-      const newLen =
-        tempVideo.duration || selectedClip.duration * speed;
-      timeline.updateClip(selectedClip.id, {
-        title: newFilename || selectedClip.title,
-        filename: newFilename || selectedClip.filename,
-        sourceUrl: newUrl,
-        sourceStart: 0,
-        sourceMin: 0,
-        sourceMax: newLen,
-        duration: newLen / speed,
+  const handleProcessClip = async (operation, options = {}) => {
+    if (!selectedClip?.file) {
+      setStatus("Select a locally imported clip first");
+      return;
+    }
+    try {
+      setStatus(`Loading FFmpeg.wasm for local ${operation}...`);
+      const result = await processClip(selectedClip.file, operation, options, (progress) => {
+        setStatus(`${operation[0].toUpperCase()}${operation.slice(1)} locally: ${Math.round(progress * 100)}%`);
       });
-    };
+      const metadata = await new Promise((resolve, reject) => {
+        const media = document.createElement(selectedClip.type === "audio" ? "audio" : "video");
+        media.preload = "metadata";
+        media.onloadedmetadata = () => {
+          resolve({ duration: media.duration, width: media.videoWidth, height: media.videoHeight });
+          media.removeAttribute("src");
+          media.load();
+        };
+        media.onerror = () => reject(new Error("Could not read the locally rendered media."));
+        media.src = result.url;
+      });
+      const current = timeline.clips.find((clip) => clip.id === selectedClip.id);
+      if (!current) return;
+      const patch = {
+        file: result.file,
+        sourceUrl: result.url,
+        filename: result.file.name,
+        title: result.file.name,
+        width: metadata.width,
+        height: metadata.height,
+      };
+      if (operation === "trim") {
+        patch.sourceStart = 0;
+        patch.sourceMin = 0;
+        patch.sourceMax = metadata.duration;
+        patch.duration = metadata.duration / (current.speed || 1);
+      } else if (operation === "rotate") {
+        patch.sourceMax = metadata.duration;
+        patch.rotation = 0;
+      } else {
+        patch.sourceMax = metadata.duration;
+      }
+      timeline.updateClip(current.id, patch);
+      setStatus(`${operation[0].toUpperCase()}${operation.slice(1)} completed locally`);
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || `Could not ${operation} this clip`);
+    }
   };
 
   const handleSelectClip = (clipId) => {
@@ -430,7 +441,9 @@ export default function App() {
         hasAudio={timeline.clips.some((c) => c.type === "audio")}
         onImport={() => fileInputRef.current?.click()}
         onImportAudio={() => audioInputRef.current?.click()}
-        onExport={handleExportToServer}
+        onExport={handleExport}
+        gpuPreviewEnabled={gpuPreviewEnabled}
+        onToggleGpuPreview={() => setGpuPreviewEnabled((enabled) => !enabled)}
       />
 
       <input
@@ -470,6 +483,8 @@ export default function App() {
             onEnded={handleVideoEnded}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
+            gpuPreviewEnabled={gpuPreviewEnabled}
+            onGpuStatus={setStatus}
           />
           <Controls
             isPlaying={player.isPlaying}
@@ -488,8 +503,7 @@ export default function App() {
           onTransformChange={(next) =>
             selectedClip && timeline.updateClip(selectedClip.id, next)
           }
-          onStatus={setStatus}
-          onVideoProcessed={handleVideoProcessed}
+          onProcessClip={handleProcessClip}
           onSeekClip={(...args) => player.seekTo(...args)}
         />
       </div>

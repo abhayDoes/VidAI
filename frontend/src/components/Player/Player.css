@@ -11,6 +11,7 @@
 }
 
 .player-frame {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -43,6 +44,25 @@
   object-fit: contain;
   background: #000000;
   transition: transform 0.15s ease;
+}
+
+.gpu-preview-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gpu-preview-canvas.gpu-preview-ready {
+  opacity: 1;
+}
+
+.video-screen-gpu-source {
+  visibility: hidden;
 }
 
 .empty-preview {
