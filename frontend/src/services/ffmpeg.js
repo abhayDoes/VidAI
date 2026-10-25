@@ -8,6 +8,13 @@ const ffmpeg = new FFmpeg();
 let loadPromise;
 let operationId = 0;
 let progressCallback = () => {};
+let taskQueue = Promise.resolve();
+
+function enqueueTask(task) {
+  const pending = taskQueue.then(task, task);
+  taskQueue = pending.catch(() => {});
+  return pending;
+}
 
 ffmpeg.on("progress", ({ progress }) => {
   progressCallback(Math.max(0, Math.min(1, progress || 0)));
@@ -51,7 +58,7 @@ async function execute(engine, args) {
   }
 }
 
-export async function processClip(file, operation, options = {}, onProgress) {
+async function processClipInternal(file, operation, options = {}, onProgress) {
   const audioOnly = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(file.name);
   if (audioOnly && operation !== "trim") throw new Error("Rotate and resize are available for video clips only.");
   const engine = await getFFmpeg(onProgress);
@@ -86,9 +93,17 @@ export async function processClip(file, operation, options = {}, onProgress) {
   } else {
     args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output);
   }
-  await execute(engine, args);
-  await engine.deleteFile(input).catch(() => {});
-  return readOutput(engine, output, output);
+  try {
+    await execute(engine, args);
+    return await readOutput(engine, output, output);
+  } finally {
+    await engine.deleteFile(input).catch(() => {});
+    await engine.deleteFile(output).catch(() => {});
+  }
+}
+
+export function processClip(file, operation, options = {}, onProgress) {
+  return enqueueTask(() => processClipInternal(file, operation, options, onProgress));
 }
 
 function atempoFilters(speed) {
@@ -123,7 +138,7 @@ async function hasAudioStream(engine, input) {
   return JSON.parse(json).streams?.some((stream) => stream.codec_type === "audio") ?? false;
 }
 
-export async function exportTimeline(clips, tracks = [], onProgress) {
+async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const videos = clips
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
@@ -149,8 +164,12 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     args.push("-i", inputNames.at(-1));
   }
 
-  const width = evenDimension(videos[0].width, 1280);
-  const height = evenDimension(videos[0].height, 720);
+  let width = evenDimension(videos[0].width, 1280);
+  let height = evenDimension(videos[0].height, 720);
+  const ratios = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1 };
+  const targetAspect = ratios[videos[0].aspectRatio] || width / height;
+  if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
+  else height = evenDimension(width / targetAspect, width);
   const graph = [];
   const concatLabels = [];
   const videoAudioStreams = await Promise.all(inputNames.map((name) => hasAudioStream(engine, name)));
@@ -226,9 +245,17 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     "-c:a", "aac", "-b:a", "160k", "-pix_fmt", "yuv420p",
     "-movflags", "+faststart", "-shortest", output,
   );
-  await execute(engine, args);
-  for (const input of inputNames) await engine.deleteFile(input).catch(() => {});
-  return readOutput(engine, output, "vidai-export.mp4");
+  try {
+    await execute(engine, args);
+    return await readOutput(engine, output, "vidai-export.mp4");
+  } finally {
+    for (const input of inputNames) await engine.deleteFile(input).catch(() => {});
+    await engine.deleteFile(output).catch(() => {});
+  }
+}
+
+export function exportTimeline(clips, tracks = [], onProgress) {
+  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress));
 }
 
 export function downloadFile(file, filename = file.name) {

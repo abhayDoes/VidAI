@@ -53,6 +53,10 @@ export default function useWebGpuPreview(videoRef, canvasRef, videoUrl, enabled,
         report("Browser video preview active");
         return;
       }
+      if (!videoUrl) {
+        setReady(false);
+        return;
+      }
       try {
         if (!navigator.gpu) throw new Error("WebGPU is unavailable in this browser.");
         const adapter = await navigator.gpu.requestAdapter();
