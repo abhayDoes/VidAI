@@ -18,5 +18,6 @@ Build a production bundle with `npm run build` and serve the generated `dist/` f
 - WebGPU is an optional preview renderer. The editor falls back to the browser video renderer when WebGPU is unavailable or fails.
 - FFmpeg.wasm loads on the first edit or export. Its core is about 32 MB before transfer compression, so the first operation takes longer.
 - Video is processed on the user's device. Large clips can be slow or exceed browser memory; FFmpeg.wasm documents a 2 GB input limit.
+- The Crop Video inspector applies a pixel crop locally. Width, height, X, and Y use source-video coordinates; crop bounds must remain inside the source frame.
 
 The app uses FFmpeg's single-thread WebAssembly core to avoid cross-origin isolation requirements for the multithreaded core. WebGPU works in supporting secure browser contexts; localhost and HTTPS are typical origins.

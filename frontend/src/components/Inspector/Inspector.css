@@ -145,3 +145,26 @@
 }
 
 
+.crop-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.crop-input-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted-text, #9aa4b2);
+  font-size: 12px;
+}
+
+.crop-input-grid input {
+  width: 100%;
+  min-width: 0;
+}
+
+.crop-controls .muted-note {
+  margin: 0 0 10px;
+}

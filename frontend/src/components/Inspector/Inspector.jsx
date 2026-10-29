@@ -1,6 +1,7 @@
 import TrimControls from "./TrimControls";
 import SpeedControls from "./SpeedControls";
 import Transform from "./Transform";
+import CropControls from "./CropControls";
 import "./Inspector.css";
 
 const RESOLUTIONS = [
@@ -103,6 +104,19 @@ export default function Inspector({
               </button>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="inspector-section">
+        <div className="section-title">Crop Video</div>
+        {selectedClip?.type === "audio" ? (
+          <p className="muted-note">Cropping is available for video clips only.</p>
+        ) : (
+          <CropControls
+            key={selectedClip?.id || "no-clip"}
+            selectedClip={selectedClip}
+            onApply={(options) => onProcessClip("crop", options)}
+          />
         )}
       </div>
 

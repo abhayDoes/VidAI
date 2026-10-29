@@ -60,7 +60,7 @@ async function execute(engine, args) {
 
 async function processClipInternal(file, operation, options = {}, onProgress) {
   const audioOnly = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(file.name);
-  if (audioOnly && operation !== "trim") throw new Error("Rotate and resize are available for video clips only.");
+  if (audioOnly && operation !== "trim") throw new Error("Rotate, resize, and crop are available for video clips only.");
   const engine = await getFFmpeg(onProgress);
   const input = await writeInput(engine, file);
   const output = nextFileName(operation, audioOnly ? "mp3" : "mp4");
@@ -83,6 +83,15 @@ async function processClipInternal(file, operation, options = {}, onProgress) {
     const height = Math.max(2, Math.floor(Number(options.height) / 2) * 2);
     if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error("Choose a valid output resolution.");
     filters.push(`scale=${width}:${height}`);
+  } else if (operation === "crop") {
+    const width = Math.floor(Number(options.width));
+    const height = Math.floor(Number(options.height));
+    const x = Math.floor(Number(options.x));
+    const y = Math.floor(Number(options.y));
+    if (![width, height, x, y].every(Number.isFinite) || width < 2 || height < 2 || x < 0 || y < 0) {
+      throw new Error("Choose positive crop dimensions and non-negative X and Y offsets.");
+    }
+    filters.push(`crop=${width}:${height}:${x}:${y}`);
   } else {
     throw new Error(`Unsupported local edit: ${operation}`);
   }
