@@ -26,6 +26,7 @@ export default function VideoPlayer({
   onImportClick,
   gpuPreviewEnabled = false,
   onGpuStatus,
+  muted = false,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
@@ -93,6 +94,7 @@ export default function VideoPlayer({
             key={videoUrl}
             ref={videoRef}
             src={videoUrl}
+            muted={muted}
             className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
             style={transformStyle}
             onTimeUpdate={onTimeUpdate}

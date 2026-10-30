@@ -243,8 +243,14 @@ export default function App() {
       const result = await processClip(selectedClip.file, operation, options, (progress) => {
         setStatus(`${operation[0].toUpperCase()}${operation.slice(1)} locally: ${Math.round(progress * 100)}%`);
       });
+      if (operation === "audio-export") {
+        downloadFile(result.file, "vidai-audio.mp3");
+        URL.revokeObjectURL(result.url);
+        setStatus("Audio export complete — your MP3 download has started");
+        return;
+      }
       const metadata = await new Promise((resolve, reject) => {
-        const media = document.createElement(selectedClip.type === "audio" ? "audio" : "video");
+        const media = document.createElement(selectedClip.type === "audio" || operation === "extract-audio" ? "audio" : "video");
         media.preload = "metadata";
         media.onloadedmetadata = () => {
           resolve({ duration: media.duration, width: media.videoWidth, height: media.videoHeight });
@@ -255,7 +261,19 @@ export default function App() {
         media.src = result.url;
       });
       const current = timeline.clips.find((clip) => clip.id === selectedClip.id);
-      if (!current) return;
+      if (!current) { URL.revokeObjectURL(result.url); return; }
+      if (operation === "extract-audio") {
+        const audioTrack = timeline.tracks.find((track) => track.type === "audio");
+        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Add an audio track before extracting audio."); }
+        timeline.updateClip(current.id, { muted: true });
+        timeline.addClip({ ...current, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: "audio", trackId: audioTrack.id, file: result.file, sourceUrl: result.url,
+          filename: result.file.name, title: result.file.name, sourceStart: 0, sourceMin: 0,
+          sourceMax: metadata.duration, duration: Math.min(current.duration, metadata.duration / (current.speed || 1)),
+          muted: false, volume: 1 });
+        setStatus("Audio extracted to the timeline; video audio muted");
+        return;
+      }
       const patch = {
         file: result.file,
         sourceUrl: result.url,
@@ -264,7 +282,7 @@ export default function App() {
         width: metadata.width,
         height: metadata.height,
       };
-      if (operation === "trim") {
+      if (operation === "trim" || operation === "audio-effect") {
         patch.sourceStart = 0;
         patch.sourceMin = 0;
         patch.sourceMax = metadata.duration;
@@ -498,6 +516,7 @@ export default function App() {
             onImportClick={() => fileInputRef.current?.click()}
             gpuPreviewEnabled={gpuPreviewEnabled}
             onGpuStatus={setStatus}
+            muted={activeClip?.muted || false}
           />
           <Controls
             isPlaying={player.isPlaying}

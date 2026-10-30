@@ -15,7 +15,8 @@ Build a production bundle with `npm run build` and serve the generated `dist/` f
 
 - FFmpeg.wasm powers local trim, rotate, resize, audio trim, and MP4 timeline export.
 - Export layers visible video clips in track order, applies clip speed and visual transforms, and mixes audio from video and audio clips. Empty video intervals appear black.
-- Trim, rotate, resize, crop, speed changes, and merging are available locally through the inspector and timeline export. The backend's separate FFmpeg sample script contains experimental audio effects that are not currently editor features.
+- Trim, rotate, resize, crop, speed changes, and merging are available locally through the inspector and timeline export.
+- Extract audio from a video to an audio track, mute video audio, download an audio clip as MP3, and apply volume, fade, normalization, denoise, equalizer, echo, reverse, and mono effects to a selected audio range. Speed and trim controls also apply to audio clips.
 - WebGPU is an optional preview renderer. The editor falls back to the browser video renderer when WebGPU is unavailable or fails.
 - FFmpeg.wasm loads on the first edit or export. Its core is about 32 MB before transfer compression, so the first operation takes longer.
 - Video is processed on the user's device. Large clips can be slow or exceed browser memory; FFmpeg.wasm documents a 2 GB input limit.
