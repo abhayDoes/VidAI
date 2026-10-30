@@ -15,6 +15,10 @@ export default function Toolbar({
   onSplitClip,
   onDeleteClip,
   onAddMarker,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }) {
   const handleMinimapClick = (e) => {
     if (!onSeek || !duration) return;
@@ -35,10 +39,10 @@ export default function Toolbar({
           <span>+ Audio</span>
         </button>
         <div className="toolbar-divider" />
-        <button className="toolbar-icon-btn" title="Undo">
+        <button className="toolbar-icon-btn" title="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo}>
           <Icons.Undo />
         </button>
-        <button className="toolbar-icon-btn" title="Redo">
+        <button className="toolbar-icon-btn" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" onClick={onRedo} disabled={!canRedo}>
           <Icons.Redo />
         </button>
         <div className="toolbar-divider" />

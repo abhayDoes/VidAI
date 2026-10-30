@@ -1,4 +1,4 @@
-export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
+export default function TrimControls({ selectedClip, onUpdateClip, onApply, onBeginEdit }) {
   if (!selectedClip) {
     return (
       <div className="inspector-section">
@@ -82,6 +82,7 @@ export default function TrimControls({ selectedClip, onUpdateClip, onApply }) {
         <span>Source in-point: {sourceStart.toFixed(1)}s</span>
         <input
           type="range"
+          onMouseDown={onBeginEdit}
           min={sourceMin}
           max={maxSourceStart}
           step="0.1"

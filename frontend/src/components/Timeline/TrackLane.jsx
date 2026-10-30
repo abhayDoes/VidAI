@@ -11,6 +11,7 @@ export default function TrackLane({
   onMoveClip,
   onMoveClipTrack,
   onTrimClip,
+  onBeginEdit,
 }) {
   return (
     <div
@@ -34,6 +35,7 @@ export default function TrackLane({
             onMove={onMoveClip}
             onMoveTrack={onMoveClipTrack}
             onTrim={onTrimClip}
+            onBeginEdit={onBeginEdit}
           />
         ))}
     </div>

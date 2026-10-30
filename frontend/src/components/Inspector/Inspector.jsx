@@ -22,6 +22,7 @@ export default function Inspector({
   transform,
   onTransformChange,
   onUpdateClip,
+  onBeginEdit,
   onSeekClip,
   onProcessClip,
 }) {
@@ -38,6 +39,7 @@ export default function Inspector({
             <span>Volume: {Math.round((selectedClip.volume ?? 1) * 100)}%</span>
             <input
               type="range"
+              onMouseDown={onBeginEdit}
               min="0"
               max="1"
               step="0.05"
@@ -91,6 +93,7 @@ export default function Inspector({
         key={selectedClip ? selectedClip.id : "none"}
         selectedClip={selectedClip}
         onUpdateClip={onUpdateClip}
+        onBeginEdit={onBeginEdit}
         onApply={() => onProcessClip("trim", {
           start: selectedClip?.sourceStart || 0,
           duration: (selectedClip?.duration || 0) * (selectedClip?.speed || 1),
@@ -102,6 +105,7 @@ export default function Inspector({
         <SpeedControls
           selectedClip={selectedClip}
           onUpdateClip={onUpdateClip}
+          onBeginEdit={onBeginEdit}
           onSeek={onSeekClip}
         />
       </div>

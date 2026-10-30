@@ -12,6 +12,7 @@ export default function Clip({
   onMove,
   onMoveTrack,
   onTrim,
+  onBeginEdit,
 }) {
   const dragRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -26,6 +27,11 @@ export default function Clip({
 
     const handleMouseMove = (event) => {
       if (!dragRef.current) return;
+      if (event.buttons === 0) {
+        dragRef.current = null;
+        setIsDragging(false);
+        return;
+      }
       // Horizontal: move along the timeline.
       const delta = (event.clientX - dragRef.current.pointerX) / pixelsPerSecond;
       if (dragRef.current.trim) {
@@ -85,6 +91,7 @@ export default function Clip({
     event.stopPropagation();
     if (locked || event.button !== 0) return;
     event.preventDefault();
+    onBeginEdit();
     onSelect(clip.id);
     dragRef.current = {
       pointerX: event.clientX,
@@ -99,6 +106,7 @@ export default function Clip({
     event.stopPropagation();
     if (locked || event.button !== 0) return;
     event.preventDefault();
+    onBeginEdit();
     onSelect(clip.id);
     dragRef.current = {
       trim, pointerX: event.clientX, start: clip.start, duration: clip.duration,

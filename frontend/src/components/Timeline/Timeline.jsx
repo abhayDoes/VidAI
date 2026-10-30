@@ -22,6 +22,11 @@ export default function Timeline({
   onMoveClip,
   onMoveClipTrack,
   onTrimClip,
+  onBeginEdit,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onAddTrack,
   onToggleSnap,
   onSplitClip,
@@ -117,6 +122,10 @@ export default function Timeline({
         onSplitClip={onSplitClip}
         onDeleteClip={onDeleteClip}
         onAddMarker={onAddMarker}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       <div className="timeline-body" ref={timelineBodyRef}>
@@ -130,6 +139,7 @@ export default function Timeline({
               onToggleLock={onToggleTrackLock}
               onToggleVisible={onToggleTrackVisible}
               onSetVolume={onSetTrackVolume}
+              onBeginEdit={onBeginEdit}
             />
           ))}
         </div>
@@ -173,6 +183,7 @@ export default function Timeline({
               onMoveClip={onMoveClip}
               onMoveClipTrack={onMoveClipTrack}
               onTrimClip={onTrimClip}
+              onBeginEdit={onBeginEdit}
             />
           ))}
         </div>

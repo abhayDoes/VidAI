@@ -5,6 +5,7 @@ export default function TrackHeader({
   onToggleLock,
   onToggleVisible,
   onSetVolume,
+  onBeginEdit,
 }) {
   const isAudio = track.type === "audio";
 
@@ -26,6 +27,7 @@ export default function TrackHeader({
           <div className="track-volume-wrap" title={`Volume: ${Math.round((track.volume ?? 1) * 100)}%`}>
             <input
               type="range"
+              onMouseDown={onBeginEdit}
               min="0"
               max="1"
               step="0.05"

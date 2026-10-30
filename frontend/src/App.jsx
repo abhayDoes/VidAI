@@ -27,6 +27,7 @@ export default function App() {
   const player = useVideoPlayer();
   const { setVideoSource, setDuration, isPlaying, currentTime, setIsPlaying, seekTo } = player;
   const timeline = useTimeline({ videoDuration: player.duration });
+  const { undo, redo } = timeline;
 
   // Manage frontend-level background audio track playback in sync with playhead
   useAudioMixer({
@@ -271,12 +272,14 @@ export default function App() {
       if (operation === "extract-audio") {
         const audioTrack = timeline.tracks.find((track) => track.type === "audio");
         if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Add an audio track before extracting audio."); }
+        timeline.startHistoryGroup();
         timeline.updateClip(current.id, { muted: true });
         timeline.addClip({ ...current, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           type: "audio", trackId: audioTrack.id, file: result.file, sourceUrl: result.url,
           filename: result.file.name, title: result.file.name, sourceStart: 0, sourceMin: 0,
           sourceMax: metadata.duration, duration: Math.min(current.duration, metadata.duration / (current.speed || 1)),
           muted: false, volume: 1 });
+        timeline.endHistoryGroup();
         setStatus("Audio extracted to the timeline; video audio muted");
         return;
       }
@@ -366,6 +369,24 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleTogglePlay]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+      } else if (key === "y" && !event.shiftKey) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   const handleStop = useCallback(() => {
     player.setIsPlaying(false);
@@ -475,6 +496,7 @@ export default function App() {
           }
           onProcessClip={handleProcessClip}
           onUpdateClip={timeline.updateClip}
+          onBeginEdit={timeline.beginHistoryGroup}
           onSeekClip={(...args) => player.seekTo(...args)}
         />
       </div>
@@ -494,6 +516,11 @@ export default function App() {
         onMoveClip={handleMoveClip}
         onMoveClipTrack={timeline.moveClipToTrack}
         onTrimClip={timeline.updateClip}
+        onBeginEdit={timeline.beginHistoryGroup}
+        onUndo={timeline.undo}
+        onRedo={timeline.redo}
+        canUndo={timeline.canUndo}
+        canRedo={timeline.canRedo}
         onAddTrack={timeline.addTrack}
         onToggleSnap={() => timeline.setIsSnapping(!timeline.isSnapping)}
         onSplitClip={handleSplitClip}
