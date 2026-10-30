@@ -8,6 +8,13 @@ const ffmpeg = new FFmpeg();
 let loadPromise;
 let operationId = 0;
 let progressCallback = () => {};
+let taskQueue = Promise.resolve();
+
+function enqueueTask(task) {
+  const pending = taskQueue.then(task, task);
+  taskQueue = pending.catch(() => {});
+  return pending;
+}
 
 ffmpeg.on("progress", ({ progress }) => {
   progressCallback(Math.max(0, Math.min(1, progress || 0)));
@@ -51,9 +58,9 @@ async function execute(engine, args) {
   }
 }
 
-export async function processClip(file, operation, options = {}, onProgress) {
+async function processClipInternal(file, operation, options = {}, onProgress) {
   const audioOnly = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(file.name);
-  if (audioOnly && operation !== "trim") throw new Error("Rotate and resize are available for video clips only.");
+  if (audioOnly && operation !== "trim") throw new Error("Rotate, resize, and crop are available for video clips only.");
   const engine = await getFFmpeg(onProgress);
   const input = await writeInput(engine, file);
   const output = nextFileName(operation, audioOnly ? "mp3" : "mp4");
@@ -76,6 +83,15 @@ export async function processClip(file, operation, options = {}, onProgress) {
     const height = Math.max(2, Math.floor(Number(options.height) / 2) * 2);
     if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error("Choose a valid output resolution.");
     filters.push(`scale=${width}:${height}`);
+  } else if (operation === "crop") {
+    const width = Math.floor(Number(options.width));
+    const height = Math.floor(Number(options.height));
+    const x = Math.floor(Number(options.x));
+    const y = Math.floor(Number(options.y));
+    if (![width, height, x, y].every(Number.isFinite) || width < 2 || height < 2 || x < 0 || y < 0) {
+      throw new Error("Choose positive crop dimensions and non-negative X and Y offsets.");
+    }
+    filters.push(`crop=${width}:${height}:${x}:${y}`);
   } else {
     throw new Error(`Unsupported local edit: ${operation}`);
   }
@@ -86,9 +102,17 @@ export async function processClip(file, operation, options = {}, onProgress) {
   } else {
     args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output);
   }
-  await execute(engine, args);
-  await engine.deleteFile(input).catch(() => {});
-  return readOutput(engine, output, output);
+  try {
+    await execute(engine, args);
+    return await readOutput(engine, output, output);
+  } finally {
+    await engine.deleteFile(input).catch(() => {});
+    await engine.deleteFile(output).catch(() => {});
+  }
+}
+
+export function processClip(file, operation, options = {}, onProgress) {
+  return enqueueTask(() => processClipInternal(file, operation, options, onProgress));
 }
 
 function atempoFilters(speed) {
@@ -123,11 +147,16 @@ async function hasAudioStream(engine, input) {
   return JSON.parse(json).streams?.some((stream) => stream.codec_type === "audio") ?? false;
 }
 
-export async function exportTimeline(clips, tracks = [], onProgress) {
+async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const videos = clips
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
   if (!videos.length) throw new Error("Add a video clip to the timeline before exporting.");
+  for (let index = 1; index < videos.length; index += 1) {
+    if (videos[index].start < videos[index - 1].start + videos[index - 1].duration - 0.001) {
+      throw new Error("Overlapping video clips cannot yet be exported. Move them so they do not overlap.");
+    }
+  }
 
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
   const audio = clips.filter((clip) => {
@@ -149,13 +178,25 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     args.push("-i", inputNames.at(-1));
   }
 
-  const width = evenDimension(videos[0].width, 1280);
-  const height = evenDimension(videos[0].height, 720);
+  let width = evenDimension(videos[0].width, 1280);
+  let height = evenDimension(videos[0].height, 720);
+  const ratios = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1 };
+  const targetAspect = ratios[videos[0].aspectRatio] || width / height;
+  if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
+  else height = evenDimension(width / targetAspect, width);
   const graph = [];
   const concatLabels = [];
+  let timelineCursor = 0;
   const videoAudioStreams = await Promise.all(inputNames.map((name) => hasAudioStream(engine, name)));
 
   videos.forEach((clip, index) => {
+    const gap = Math.max(0, Number(clip.start) - timelineCursor);
+    if (gap > 0.001) {
+      graph.push(`color=c=black:s=${width}x${height}:r=30:d=${gap},format=yuv420p[gapv${index}]`);
+      graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${gap},asetpts=PTS-STARTPTS[gapa${index}]`);
+      concatLabels.push(`[gapv${index}][gapa${index}]`);
+    }
+    timelineCursor = Number(clip.start) + Number(clip.duration);
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const sourceStart = Math.max(0, Number(clip.sourceStart) || 0);
     const sourceDuration = Math.max(0.1, clip.duration * speed);
@@ -198,7 +239,7 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     concatLabels.push(`[v${index}][${audioLabel}]`);
   });
 
-  graph.push(`${concatLabels.join("")}concat=n=${videos.length}:v=1:a=1[outv][baseaudio]`);
+  graph.push(`${concatLabels.join("")}concat=n=${concatLabels.length}:v=1:a=1[outv][baseaudio]`);
   const audioLabels = ["[baseaudio]"];
   audio.forEach((clip, index) => {
     const inputIndex = audioInputStart + index;
@@ -206,9 +247,10 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     const volume = Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
     const start = Math.max(0, Number(clip.sourceStart) || 0);
     const duration = Math.max(0.1, Number(clip.duration) || 0.1);
+    const speed = Math.max(0.05, Number(clip.speed) || 1);
     const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
     const label = `music${index}`;
-    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,volume=${volume},adelay=${delay}|${delay}[${label}]`);
+    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
     audioLabels.push(`[${label}]`);
   });
 
@@ -226,9 +268,17 @@ export async function exportTimeline(clips, tracks = [], onProgress) {
     "-c:a", "aac", "-b:a", "160k", "-pix_fmt", "yuv420p",
     "-movflags", "+faststart", "-shortest", output,
   );
-  await execute(engine, args);
-  for (const input of inputNames) await engine.deleteFile(input).catch(() => {});
-  return readOutput(engine, output, "vidai-export.mp4");
+  try {
+    await execute(engine, args);
+    return await readOutput(engine, output, "vidai-export.mp4");
+  } finally {
+    for (const input of inputNames) await engine.deleteFile(input).catch(() => {});
+    await engine.deleteFile(output).catch(() => {});
+  }
+}
+
+export function exportTimeline(clips, tracks = [], onProgress) {
+  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress));
 }
 
 export function downloadFile(file, filename = file.name) {

@@ -225,6 +225,18 @@ export default function App() {
       setStatus("Select a locally imported clip first");
       return;
     }
+    if (operation === "crop") {
+      const { width, height, x, y } = options;
+      if (
+        ![width, height, x, y].every(Number.isFinite) ||
+        [width, height, x, y].some((value) => value % 2 !== 0) ||
+        width < 2 || height < 2 || x < 0 || y < 0 ||
+        x + width > selectedClip.width || y + height > selectedClip.height
+      ) {
+        setStatus(`Crop must fit inside the ${selectedClip.width} × ${selectedClip.height}px source frame`);
+        return;
+      }
+    }
     try {
       setStatus(`Loading FFmpeg.wasm for local ${operation}...`);
       const result = await processClip(selectedClip.file, operation, options, (progress) => {
@@ -504,6 +516,7 @@ export default function App() {
             selectedClip && timeline.updateClip(selectedClip.id, next)
           }
           onProcessClip={handleProcessClip}
+          onUpdateClip={timeline.updateClip}
           onSeekClip={(...args) => player.seekTo(...args)}
         />
       </div>

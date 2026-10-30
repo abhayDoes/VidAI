@@ -1,19 +1,24 @@
-# React + Vite
+# VidAI Studio frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The editor handles media in the browser. Imported files stay in browser memory; the editing flow does not upload them or call the backend API.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```sh
+npm install
+npm run dev
+```
 
-## React Compiler
+Build a production bundle with `npm run build` and serve the generated `dist/` folder from any static web host.
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+## Browser media features
 
-Note: This will impact Vite dev & build performances.
-You can also try [the experimental native React Compiler support in plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#rust-react-compiler) by using `compiler: true` in the plugin options instead of using the Babel plugin.
+- FFmpeg.wasm powers local trim, rotate, resize, audio trim, and MP4 timeline export.
+- Export joins visible video clips in timeline order, applies clip speed and visual transforms, and mixes audio from video and audio clips.
+- Export fills gaps between video clips with black and silence, and applies the speed of separate audio clips. Overlapping video clips must be moved apart before export.
+- WebGPU is an optional preview renderer. The editor falls back to the browser video renderer when WebGPU is unavailable or fails.
+- FFmpeg.wasm loads on the first edit or export. Its core is about 32 MB before transfer compression, so the first operation takes longer.
+- Video is processed on the user's device. Large clips can be slow or exceed browser memory; FFmpeg.wasm documents a 2 GB input limit.
+- The Crop Video inspector applies a pixel crop locally. Width, height, X, and Y use source-video coordinates; crop bounds must remain inside the source frame.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+The app uses FFmpeg's single-thread WebAssembly core to avoid cross-origin isolation requirements for the multithreaded core. WebGPU works in supporting secure browser contexts; localhost and HTTPS are typical origins.
