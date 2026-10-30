@@ -1,4 +1,17 @@
 .media-panel { width: 264px; min-width: 264px; min-height: 0; background: #0b0b0c; border-right: 1px solid #27272a; display: flex; flex-direction: column; color: #e9e9eb; }
+.workspace-panel { width: 290px; min-width: 290px; min-height: 0; display: flex; flex-direction: column; background: #0b0b0c; border-right: 1px solid #27272a; }
+.workspace-tabs { display: flex; gap: 4px; padding: 10px 12px; border-bottom: 1px solid #27272a; }
+.workspace-tabs button { flex: 1; padding: 9px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #a3a3aa; font-size: 12px; font-weight: 650; cursor: pointer; }
+.workspace-tabs button:hover { background: #242426; color: #fff; }
+.workspace-tabs button[aria-selected="true"] { background: #302015; border-color: #774319; color: #ff9b4e; }
+.workspace-tabs button:focus-visible { outline: 2px solid #ff9b4e; outline-offset: 2px; }
+.workspace-media, .workspace-edit { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.workspace-media[hidden], .workspace-edit[hidden] { display: none; }
+.workspace-panel .media-panel { width: 100%; min-width: 0; height: 100%; border: 0; }
+.workspace-edit .inspector-panel { width: 100%; min-width: 0; min-height: 0; flex: 1; background: #111113; border: 0; }
+.workspace-edit .trim-inputs label, .workspace-edit .trim-inputs input { min-width: 0; width: 100%; }
+.workspace-edit-empty { padding: 24px 16px; color: #ededee; font-size: 13px; }
+.workspace-edit-empty p { margin-top: 8px; color: #929298; font-size: 12px; line-height: 1.5; }
 .media-panel-heading { display: flex; align-items: end; justify-content: space-between; padding: 20px 18px 15px; border-bottom: 1px solid #222225; }
 .media-panel-heading h2 { margin: 4px 0 0; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
 .media-eyebrow, .media-list-heading { color: #808086; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
@@ -25,5 +38,5 @@
 .media-item-text { min-width: 0; display: flex; flex-direction: column; gap: 4px; }.media-item-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }.media-item-text small { color: #929297; font-size: 10px; }
 .media-no-results { font-size: 12px; color: #85858b; padding: 12px 5px; }
 .media-panel-footer { border-top: 1px solid #222225; padding: 12px 17px; color: #8c8c92; font-size: 10px; }.media-local-dot { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #68be95; }
-@media (max-width: 850px) { .media-panel { width: 190px; min-width: 190px; } .media-empty { padding: 15px 8px; } }
-@media (max-width: 600px) { .media-panel { width: 150px; min-width: 150px; } .media-panel-heading { padding: 12px; } .media-panel-actions { padding: 10px; } .media-search { margin: 0 10px; } .media-list-heading { padding: 12px 10px; } .media-panel-footer { display: none; } }
+@media (max-width: 850px) { .workspace-panel { width: 235px; min-width: 235px; } .media-empty { padding: 15px 8px; } }
+@media (max-width: 600px) { .workspace-panel { width: 190px; min-width: 190px; } .workspace-tabs { padding: 8px 6px; } .media-panel-heading { padding: 12px; } .media-panel-actions { padding: 10px; } .media-search { margin: 0 10px; } .media-list-heading { padding: 12px 10px; } .media-panel-footer { display: none; } }

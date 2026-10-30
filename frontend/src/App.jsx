@@ -27,7 +27,7 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
   const [clipMenu, setClipMenu] = useState(null);
-  const [showClipTools, setShowClipTools] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState("media");
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
 
   const player = useVideoPlayer();
@@ -311,7 +311,6 @@ export default function App() {
 
   const handleClipMenu = (clipId, x, y) => {
     timeline.selectClip(clipId);
-    setShowClipTools(false);
     setClipMenu({ clipId, x, y });
   };
 
@@ -323,11 +322,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!showClipTools) return undefined;
-    const onKeyDown = (event) => { if (event.key === "Escape") setShowClipTools(false); };
+    if (workspaceTab !== "edit" || clipMenu) return undefined;
+    const onKeyDown = (event) => { if (event.key === "Escape") setWorkspaceTab("media"); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [showClipTools]);
+  }, [workspaceTab, clipMenu]);
 
   const handleMoveClip = (clipId, desiredStart) => {
     const clip = timeline.clips.find((item) => item.id === clipId);
@@ -463,8 +462,31 @@ export default function App() {
       />
 
       <div className="studio-body">
-        <MediaPanel clips={timeline.clips} selectedClipId={timeline.selectedClipId}
-          onImport={() => fileInputRef.current?.click()} onSelectClip={handleSelectClip} />
+        <aside className="workspace-panel" aria-label="Workspace">
+          <div className="workspace-tabs" role="tablist" aria-label="Workspace panels">
+            <button type="button" role="tab" id="workspace-media-tab" aria-selected={workspaceTab === "media"} aria-controls="workspace-media" onClick={() => setWorkspaceTab("media")}>Media</button>
+            <button type="button" role="tab" id="workspace-edit-tab" aria-selected={workspaceTab === "edit"} aria-controls="workspace-edit" onClick={() => setWorkspaceTab("edit")}>Edit</button>
+          </div>
+          <div className="workspace-media" role="tabpanel" id="workspace-media" aria-labelledby="workspace-media-tab" hidden={workspaceTab !== "media"}>
+            <MediaPanel clips={timeline.clips} selectedClipId={timeline.selectedClipId}
+              onImport={() => fileInputRef.current?.click()} onSelectClip={handleSelectClip} />
+          </div>
+          <div className="workspace-edit" role="tabpanel" id="workspace-edit" aria-labelledby="workspace-edit-tab" hidden={workspaceTab !== "edit"}>
+            {selectedClip ? (
+              <Inspector
+                videoFile={selectedClip.file}
+                selectedClip={selectedClip}
+                selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
+                transform={selectedTransform}
+                onTransformChange={(next) => timeline.updateClip(selectedClip.id, next)}
+                onProcessClip={handleProcessClip}
+                onUpdateClip={timeline.updateClip}
+                onBeginEdit={timeline.beginHistoryGroup}
+                onSeekClip={(...args) => player.seekTo(...args)}
+              />
+            ) : <div className="workspace-edit-empty"><strong>Select a clip to edit</strong><p>Click a video or audio clip on the timeline to see its tools here.</p></div>}
+          </div>
+        </aside>
         <div className="studio-main">
       <div className="workspace-row">
         <div className="player-pane">
@@ -547,23 +569,7 @@ export default function App() {
             closeClipMenu();
             handleProcessClip("extract-audio", { start: menuClip.sourceStart || 0, duration: menuClip.duration * (menuClip.speed || 1) });
           }}
-          onMore={() => { closeClipMenu(); setShowClipTools(true); }} />
-      )}
-      {showClipTools && selectedClip && (
-        <section className="clip-tools-popup" aria-label="Clip editing tools">
-          <div className="clip-tools-popup-header"><span>Clip editing tools</span><button type="button" aria-label="Close editing tools" onClick={() => setShowClipTools(false)}>×</button></div>
-          <Inspector
-            videoFile={selectedClip.file}
-            selectedClip={selectedClip}
-            selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
-            transform={selectedTransform}
-            onTransformChange={(next) => timeline.updateClip(selectedClip.id, next)}
-            onProcessClip={handleProcessClip}
-            onUpdateClip={timeline.updateClip}
-            onBeginEdit={timeline.beginHistoryGroup}
-            onSeekClip={(...args) => player.seekTo(...args)}
-          />
-        </section>
+          onMore={() => { closeClipMenu(); setWorkspaceTab("edit"); }} />
       )}
     </div>
   );
