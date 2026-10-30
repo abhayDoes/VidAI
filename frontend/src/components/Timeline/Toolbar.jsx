@@ -30,6 +30,8 @@ export default function Toolbar({
   return (
     <div className="timeline-toolbar">
       <div className="toolbar-left">
+        <span className="timeline-label"><span aria-hidden="true">▦</span> TIMELINE</span>
+        <div className="toolbar-divider" />
         <button className="toolbar-btn" onClick={onAddTrack} title="Add Track">
           <Icons.AddTrack />
           <span>+ Track</span>

@@ -2,6 +2,7 @@ import "./Header.css";
 
 export default function Header({
   status,
+  clipCount = 0,
   hasVideo,
   hasAudio,
   onImport,
@@ -13,9 +14,10 @@ export default function Header({
   return (
     <header className="editor-header">
       <div className="brand">
-        <div className="brand-dot" />
-        <span>VidAI Studio</span>
+        <div className="brand-mark" aria-hidden="true">V<span>•</span></div>
+        <div className="brand-details"><span className="brand-name">VidAI <span>Studio</span></span><span className="brand-meta">EDITOR <b>·</b> {clipCount} {clipCount === 1 ? "CLIP" : "CLIPS"}</span></div>
       </div>
+      <div className="header-mode"><span className="header-mode-dot" /> Edit workspace</div>
 
       <div className="header-actions">
         {status && <span className="status-text">{status}</span>}

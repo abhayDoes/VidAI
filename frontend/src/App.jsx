@@ -5,12 +5,14 @@ import Controls from "./components/Player/Controls";
 import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
 import ClipMenu from "./components/Timeline/ClipMenu";
+import MediaPanel from "./components/MediaPanel/MediaPanel";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
 import { isAudioFile, loadAudioFile } from "./utils/audioUtils";
 import { downloadFile, exportTimeline, processClip } from "./services/ffmpeg";
 import "./App.css";
+import "./Studio.css";
 
 const DEFAULT_TRANSFORM = {
   rotation: 0,
@@ -432,6 +434,7 @@ export default function App() {
     <div className="editor-container">
       <Header
         status={status}
+        clipCount={timeline.clips.length}
         hasVideo={timeline.clips.some((c) => c.type !== "audio")}
         hasAudio={timeline.clips.some((c) => c.type === "audio")}
         onImport={() => fileInputRef.current?.click()}
@@ -459,6 +462,10 @@ export default function App() {
         onChange={handleFileChange}
       />
 
+      <div className="studio-body">
+        <MediaPanel clips={timeline.clips} selectedClipId={timeline.selectedClipId}
+          onImport={() => fileInputRef.current?.click()} onSelectClip={handleSelectClip} />
+        <div className="studio-main">
       <div className="workspace-row">
         <div className="player-pane">
           <VideoPlayer
@@ -528,6 +535,8 @@ export default function App() {
         onToggleTrackMute={timeline.toggleTrackMute}
         onSetTrackVolume={timeline.setTrackVolume}
       />
+        </div>
+      </div>
       {clipMenu && menuClip && (
         <ClipMenu clip={menuClip} position={clipMenu}
           locked={timeline.tracks.find((track) => track.id === menuClip.trackId)?.locked}

@@ -17,6 +17,7 @@ Build a production bundle with `npm run build` and serve the generated `dist/` f
 - Export layers visible video clips in track order, applies clip speed and visual transforms, and mixes audio from video and audio clips. Empty video intervals appear black.
 - Drag a clip to move it or drag its left and right edges to trim it. Playback follows timeline positions and continues through gaps.
 - Every track accepts audio and video. Click a track before importing to place media on it at the playhead (or the next available space); click a clip to select it. Track visibility, mute, volume, and lock controls apply to that track.
+- The Media panel lists clips currently on the timeline. Search by name or click an item to select its clip.
 - Right-click a clip for speed, mute, and video audio extraction. Choose “More editing tools” for trim, crop, audio effects, and other controls; Escape closes the menu or tools panel. Focus a clip and press Shift+F10 to open its menu from the keyboard.
 - Undo and redo timeline edits with the toolbar or Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y also redoes). History keeps up to 100 actions while the page remains open.
 - Trim, rotate, resize, crop, speed changes, and merging are available locally through the inspector and timeline export.

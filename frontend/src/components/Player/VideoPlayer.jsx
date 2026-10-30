@@ -128,9 +128,7 @@ export default function VideoPlayer({
         </div>
       ) : (
         <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>
-          <span className="import-prompt">
-            {hasClips ? "No video at the playhead" : "Click to import videos"}
-          </span>
+          <div className="preview-empty-content"><span className="preview-empty-icon" aria-hidden="true">▶</span><strong>{hasClips ? "No video at the playhead" : "Your canvas is ready"}</strong><span className="import-prompt">{hasClips ? "Move the playhead over a video clip to preview it." : "Import media to start creating your video."}</span></div>
         </div>
       )}
     </main>
