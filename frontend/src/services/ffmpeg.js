@@ -152,6 +152,11 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
   if (!videos.length) throw new Error("Add a video clip to the timeline before exporting.");
+  for (let index = 1; index < videos.length; index += 1) {
+    if (videos[index].start < videos[index - 1].start + videos[index - 1].duration - 0.001) {
+      throw new Error("Overlapping video clips cannot yet be exported. Move them so they do not overlap.");
+    }
+  }
 
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
   const audio = clips.filter((clip) => {
@@ -181,9 +186,17 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   else height = evenDimension(width / targetAspect, width);
   const graph = [];
   const concatLabels = [];
+  let timelineCursor = 0;
   const videoAudioStreams = await Promise.all(inputNames.map((name) => hasAudioStream(engine, name)));
 
   videos.forEach((clip, index) => {
+    const gap = Math.max(0, Number(clip.start) - timelineCursor);
+    if (gap > 0.001) {
+      graph.push(`color=c=black:s=${width}x${height}:r=30:d=${gap},format=yuv420p[gapv${index}]`);
+      graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${gap},asetpts=PTS-STARTPTS[gapa${index}]`);
+      concatLabels.push(`[gapv${index}][gapa${index}]`);
+    }
+    timelineCursor = Number(clip.start) + Number(clip.duration);
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const sourceStart = Math.max(0, Number(clip.sourceStart) || 0);
     const sourceDuration = Math.max(0.1, clip.duration * speed);
@@ -226,7 +239,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     concatLabels.push(`[v${index}][${audioLabel}]`);
   });
 
-  graph.push(`${concatLabels.join("")}concat=n=${videos.length}:v=1:a=1[outv][baseaudio]`);
+  graph.push(`${concatLabels.join("")}concat=n=${concatLabels.length}:v=1:a=1[outv][baseaudio]`);
   const audioLabels = ["[baseaudio]"];
   audio.forEach((clip, index) => {
     const inputIndex = audioInputStart + index;
@@ -234,9 +247,10 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     const volume = Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
     const start = Math.max(0, Number(clip.sourceStart) || 0);
     const duration = Math.max(0.1, Number(clip.duration) || 0.1);
+    const speed = Math.max(0.05, Number(clip.speed) || 1);
     const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
     const label = `music${index}`;
-    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,volume=${volume},adelay=${delay}|${delay}[${label}]`);
+    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
     audioLabels.push(`[${label}]`);
   });
 

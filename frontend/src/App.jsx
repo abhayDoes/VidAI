@@ -516,6 +516,7 @@ export default function App() {
             selectedClip && timeline.updateClip(selectedClip.id, next)
           }
           onProcessClip={handleProcessClip}
+          onUpdateClip={timeline.updateClip}
           onSeekClip={(...args) => player.seekTo(...args)}
         />
       </div>

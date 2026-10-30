@@ -9,7 +9,7 @@ export default function CropControls({ selectedClip, onApply }) {
   const dimensions = useMemo(() => ({
     width: Math.max(2, Number(selectedClip?.width) || 1280),
     height: Math.max(2, Number(selectedClip?.height) || 720),
-  }), [selectedClip?.id, selectedClip?.width, selectedClip?.height]);
+  }), [selectedClip?.width, selectedClip?.height]);
   const initial = useMemo(() => {
     const width = even(dimensions.width * 0.8, dimensions.width);
     const height = even(dimensions.height * 0.8, dimensions.height);
