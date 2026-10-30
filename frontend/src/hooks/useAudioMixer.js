@@ -93,7 +93,7 @@ export default function useAudioMixer({
             currentTime < clip.start + clip.duration;
           if (inRange) {
             const targetTime =
-              (clip.sourceStart || 0) + (currentTime - clip.start);
+              (clip.sourceStart || 0) + (currentTime - clip.start) * (clip.speed || 1);
             try {
               if (Math.abs(audio.currentTime - targetTime) > 0.05) {
                 audio.currentTime = Math.max(0, targetTime);
@@ -111,6 +111,7 @@ export default function useAudioMixer({
       const isMuted = !track || !track.visible || track.muted;
       const trackVolume = track?.volume ?? 1.0;
       const clipVolume = clip.volume ?? 1.0;
+      const speed = clip.speed || 1;
       const finalVolume = isMuted
         ? 0
         : Math.max(0, Math.min(1, trackVolume * clipVolume));
@@ -132,21 +133,21 @@ export default function useAudioMixer({
       if (inRange && !isMuted && finalVolume > 0) {
         audio.volume = finalVolume;
         const targetTime =
-          (clip.sourceStart || 0) + (currentTime - clip.start);
+          (clip.sourceStart || 0) + (currentTime - clip.start) * speed;
 
         if (audio.paused) {
           // Audio just entered range or playback just started: seek once and play
           try {
             audio.currentTime = Math.max(0, targetTime);
           } catch {}
-          audio.playbackRate = 1.0;
+          audio.playbackRate = speed;
           safePlay(audio);
         } else if (isUserSeek) {
           // User clicked timeline or scrubbed: hard seek to new playhead position
           try {
             audio.currentTime = Math.max(0, targetTime);
           } catch {}
-          audio.playbackRate = 1.0;
+          audio.playbackRate = speed;
         } else {
           // Continuous smooth playback: NEVER hard seek audio.currentTime!
           // Use imperceptible pitch-neutral playbackRate micro-adjustments
@@ -157,16 +158,16 @@ export default function useAudioMixer({
             try {
               audio.currentTime = Math.max(0, targetTime);
             } catch {}
-            audio.playbackRate = 1.0;
+            audio.playbackRate = speed;
           } else if (drift > 0.12) {
             // Audio slightly behind: catch up smoothly (+4% tempo)
-            audio.playbackRate = 1.04;
+            audio.playbackRate = speed * 1.04;
           } else if (drift < -0.12) {
             // Audio slightly ahead: ease back smoothly (-4% tempo)
-            audio.playbackRate = 0.96;
-          } else if (audio.playbackRate !== 1.0) {
+            audio.playbackRate = speed * 0.96;
+          } else if (audio.playbackRate !== speed) {
             // In sync (within 120ms): restore normal 1.0x rate
-            audio.playbackRate = 1.0;
+            audio.playbackRate = speed;
           }
         }
       } else {

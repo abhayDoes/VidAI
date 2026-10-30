@@ -213,6 +213,7 @@ export default function App() {
         setStatus(`Rendering locally: ${Math.round(progress * 100)}%`);
       });
       downloadFile(result.file);
+      URL.revokeObjectURL(result.url);
       setStatus("Export complete — your MP4 download has started");
     } catch (error) {
       console.error(error);

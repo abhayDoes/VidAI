@@ -36,6 +36,8 @@ export default function useVideoPlayer() {
         if (!validDuration || validDuration > 86400) {
           validDuration = 60;
         }
+        const width = tempVideo.videoWidth || undefined;
+        const height = tempVideo.videoHeight || undefined;
         try {
           tempVideo.removeAttribute("src");
           tempVideo.load();
@@ -45,8 +47,8 @@ export default function useVideoPlayer() {
         resolve({
           url,
           duration: validDuration,
-          width: tempVideo.videoWidth || undefined,
-          height: tempVideo.videoHeight || undefined,
+          width,
+          height,
           file,
         });
       };
