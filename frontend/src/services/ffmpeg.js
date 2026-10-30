@@ -64,6 +64,7 @@ async function processClipInternal(file, operation, options = {}, onProgress) {
   const engine = await getFFmpeg(onProgress);
   const input = await writeInput(engine, file);
   const output = nextFileName(operation, audioOnly ? "mp3" : "mp4");
+  try {
   const filters = [];
   const args = ["-i", input];
 
@@ -102,7 +103,6 @@ async function processClipInternal(file, operation, options = {}, onProgress) {
   } else {
     args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output);
   }
-  try {
     await execute(engine, args);
     return await readOutput(engine, output, output);
   } finally {
@@ -136,15 +136,8 @@ function evenDimension(value, fallback) {
 }
 
 async function hasAudioStream(engine, input) {
-  const report = nextFileName("probe", "json");
-  const exitCode = await engine.ffprobe([
-    "-v", "error", "-show_entries", "stream=codec_type", "-of", "json", input, "-o", report,
-  ]);
-  if (exitCode !== 0) throw new Error("Could not inspect the audio streams in a source file.");
-  const data = await engine.readFile(report);
-  await engine.deleteFile(report).catch(() => {});
-  const json = new TextDecoder().decode(data);
-  return JSON.parse(json).streams?.some((stream) => stream.codec_type === "audio") ?? false;
+  const exitCode = await engine.exec(["-v", "error", "-i", input, "-map", "0:a:0", "-t", "0.01", "-c", "copy", "-f", "null", "-"]);
+  return exitCode === 0;
 }
 
 async function exportTimelineInternal(clips, tracks = [], onProgress) {
@@ -152,11 +145,6 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
   if (!videos.length) throw new Error("Add a video clip to the timeline before exporting.");
-  for (let index = 1; index < videos.length; index += 1) {
-    if (videos[index].start < videos[index - 1].start + videos[index - 1].duration - 0.001) {
-      throw new Error("Overlapping video clips cannot yet be exported. Move them so they do not overlap.");
-    }
-  }
 
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
   const audio = clips.filter((clip) => {
@@ -168,6 +156,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const engine = await getFFmpeg(onProgress);
   const args = [];
   const inputNames = [];
+  const output = nextFileName("vidai-export");
+  try {
   for (const clip of videos) {
     inputNames.push(await writeInput(engine, clip.file));
     args.push("-i", inputNames.at(-1));
@@ -185,18 +175,16 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
   else height = evenDimension(width / targetAspect, width);
   const graph = [];
-  const concatLabels = [];
-  let timelineCursor = 0;
-  const videoAudioStreams = await Promise.all(inputNames.map((name) => hasAudioStream(engine, name)));
+  const endTime = Math.max(...videos.map((clip) => Number(clip.start) + Number(clip.duration)));
+  const videoLayers = [];
+  const audioLabels = [];
+  graph.push(`color=c=black:s=${width}x${height}:r=30:d=${endTime},format=yuv420p[canvas]`);
+  const videoAudioStreams = [];
+  for (let index = 0; index < videos.length; index += 1) {
+    videoAudioStreams.push(await hasAudioStream(engine, inputNames[index]));
+  }
 
   videos.forEach((clip, index) => {
-    const gap = Math.max(0, Number(clip.start) - timelineCursor);
-    if (gap > 0.001) {
-      graph.push(`color=c=black:s=${width}x${height}:r=30:d=${gap},format=yuv420p[gapv${index}]`);
-      graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${gap},asetpts=PTS-STARTPTS[gapa${index}]`);
-      concatLabels.push(`[gapv${index}][gapa${index}]`);
-    }
-    timelineCursor = Number(clip.start) + Number(clip.duration);
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const sourceStart = Math.max(0, Number(clip.sourceStart) || 0);
     const sourceDuration = Math.max(0.1, clip.duration * speed);
@@ -204,7 +192,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     const visualFilters = [
       `trim=start=${sourceStart}:duration=${sourceDuration}`,
       "setpts=PTS-STARTPTS",
-      `setpts=PTS/${speed}`,
+      `setpts=PTS/${speed}+${Math.max(0, Number(clip.start) || 0)}/TB`,
     ];
     const rotation = ((Number(clip.rotation) || 0) % 360 + 360) % 360;
     if (rotation === 90) visualFilters.push("transpose=1");
@@ -236,11 +224,19 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     } else {
       graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${targetDuration},asetpts=PTS-STARTPTS[${audioLabel}]`);
     }
-    concatLabels.push(`[v${index}][${audioLabel}]`);
+    const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
+    graph.push(`[${audioLabel}]adelay=${delay}|${delay}[delayed${index}]`);
+    audioLabels.push(`[delayed${index}]`);
+    videoLayers.push({ index, priority: tracks.findIndex((track) => track.id === clip.trackId) });
   });
 
-  graph.push(`${concatLabels.join("")}concat=n=${concatLabels.length}:v=1:a=1[outv][baseaudio]`);
-  const audioLabels = ["[baseaudio]"];
+  videoLayers.sort((a, b) => b.priority - a.priority || a.index - b.index);
+  let base = "canvas";
+  videoLayers.forEach(({ index }, layer) => {
+    const next = layer === videoLayers.length - 1 ? "outv" : `layer${layer}`;
+    graph.push(`[${base}][v${index}]overlay=eof_action=pass:repeatlast=0[${next}]`);
+    base = next;
+  });
   audio.forEach((clip, index) => {
     const inputIndex = audioInputStart + index;
     const track = audioTracks.get(clip.trackId);
@@ -254,13 +250,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     audioLabels.push(`[${label}]`);
   });
 
-  if (audio.length) {
-    graph.push(`${audioLabels.join("")}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0,alimiter=limit=0.95[outa]`);
-  } else {
-    graph.push("[baseaudio]anull[outa]");
-  }
+  graph.push(`${audioLabels.join("")}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[outa]`);
 
-  const output = nextFileName("vidai-export");
   args.push(
     "-filter_complex", graph.join(";"),
     "-map", "[outv]", "-map", "[outa]",
@@ -268,7 +259,6 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     "-c:a", "aac", "-b:a", "160k", "-pix_fmt", "yuv420p",
     "-movflags", "+faststart", "-shortest", output,
   );
-  try {
     await execute(engine, args);
     return await readOutput(engine, output, "vidai-export.mp4");
   } finally {
