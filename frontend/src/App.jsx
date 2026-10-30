@@ -4,6 +4,7 @@ import VideoPlayer from "./components/Player/VideoPlayer";
 import Controls from "./components/Player/Controls";
 import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
+import ClipMenu from "./components/Timeline/ClipMenu";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
@@ -23,6 +24,9 @@ export default function App() {
   const audioInputRef = useRef(null);
   const [status, setStatus] = useState("");
   const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
+  const [clipMenu, setClipMenu] = useState(null);
+  const [showClipTools, setShowClipTools] = useState(false);
+  const closeClipMenu = useCallback(() => setClipMenu(null), []);
 
   const player = useVideoPlayer();
   const { setVideoSource, setDuration, isPlaying, currentTime, setIsPlaying, seekTo } = player;
@@ -52,6 +56,7 @@ export default function App() {
   const selectedClip = timeline.clips.find(
     (clip) => clip.id === timeline.selectedClipId
   );
+  const menuClip = timeline.clips.find((clip) => clip.id === clipMenu?.clipId);
   const visibleTrackIds = new Set(
     timeline.tracks.filter((track) => track.visible).map((track) => track.id)
   );
@@ -249,8 +254,8 @@ export default function App() {
       const current = timeline.clips.find((clip) => clip.id === selectedClip.id);
       if (!current) { URL.revokeObjectURL(result.url); return; }
       if (operation === "extract-audio") {
-        const audioTrack = timeline.tracks.find((track) => !track.locked && track.id !== current.trackId) || timeline.tracks.find((track) => !track.locked);
-        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Select an unlocked track before extracting audio."); }
+        const audioTrack = timeline.tracks.find((track) => !track.locked && track.id !== current.trackId);
+        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Add or unlock another track to extract audio."); }
         timeline.startHistoryGroup();
         timeline.updateClip(current.id, { muted: true });
         timeline.addClip({ ...current, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -301,6 +306,26 @@ export default function App() {
       );
     }
   };
+
+  const handleClipMenu = (clipId, x, y) => {
+    timeline.selectClip(clipId);
+    setShowClipTools(false);
+    setClipMenu({ clipId, x, y });
+  };
+
+  const handleMenuSpeed = (speed) => {
+    if (!menuClip || speed === (menuClip.speed || 1)) return;
+    const sourceLength = menuClip.duration * (menuClip.speed || 1);
+    timeline.updateClip(menuClip.id, { speed, duration: sourceLength / speed });
+    player.seekTo(menuClip.start, menuClip.start, menuClip.sourceStart || 0, speed);
+  };
+
+  useEffect(() => {
+    if (!showClipTools) return undefined;
+    const onKeyDown = (event) => { if (event.key === "Escape") setShowClipTools(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showClipTools]);
 
   const handleMoveClip = (clipId, desiredStart) => {
     const clip = timeline.clips.find((item) => item.id === clipId);
@@ -468,19 +493,6 @@ export default function App() {
           />
         </div>
 
-        <Inspector
-          videoFile={selectedClip?.file}
-          selectedClip={selectedClip}
-          selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
-          transform={selectedTransform}
-          onTransformChange={(next) =>
-            selectedClip && timeline.updateClip(selectedClip.id, next)
-          }
-          onProcessClip={handleProcessClip}
-          onUpdateClip={timeline.updateClip}
-          onBeginEdit={timeline.beginHistoryGroup}
-          onSeekClip={(...args) => player.seekTo(...args)}
-        />
       </div>
 
       <Timeline
@@ -496,6 +508,7 @@ export default function App() {
         onSetScrubbing={player.setScrubbing}
         onSnapTime={timeline.snapTime}
         onSelectClip={handleSelectClip}
+        onClipMenu={handleClipMenu}
         onSelectTrack={timeline.selectTrack}
         onMoveClip={handleMoveClip}
         onMoveClipTrack={timeline.moveClipToTrack}
@@ -515,6 +528,34 @@ export default function App() {
         onToggleTrackMute={timeline.toggleTrackMute}
         onSetTrackVolume={timeline.setTrackVolume}
       />
+      {clipMenu && menuClip && (
+        <ClipMenu clip={menuClip} position={clipMenu}
+          locked={timeline.tracks.find((track) => track.id === menuClip.trackId)?.locked}
+          onClose={closeClipMenu}
+          onSpeed={handleMenuSpeed}
+          onMute={() => timeline.updateClip(menuClip.id, { muted: !menuClip.muted })}
+          onExtract={() => {
+            closeClipMenu();
+            handleProcessClip("extract-audio", { start: menuClip.sourceStart || 0, duration: menuClip.duration * (menuClip.speed || 1) });
+          }}
+          onMore={() => { closeClipMenu(); setShowClipTools(true); }} />
+      )}
+      {showClipTools && selectedClip && (
+        <section className="clip-tools-popup" aria-label="Clip editing tools">
+          <div className="clip-tools-popup-header"><span>Clip editing tools</span><button type="button" aria-label="Close editing tools" onClick={() => setShowClipTools(false)}>×</button></div>
+          <Inspector
+            videoFile={selectedClip.file}
+            selectedClip={selectedClip}
+            selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
+            transform={selectedTransform}
+            onTransformChange={(next) => timeline.updateClip(selectedClip.id, next)}
+            onProcessClip={handleProcessClip}
+            onUpdateClip={timeline.updateClip}
+            onBeginEdit={timeline.beginHistoryGroup}
+            onSeekClip={(...args) => player.seekTo(...args)}
+          />
+        </section>
+      )}
     </div>
   );
 }

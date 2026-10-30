@@ -1,0 +1,24 @@
+.clip-menu {
+  position: fixed;
+  z-index: 1000;
+  width: 224px;
+  padding: 6px;
+  border: 1px solid #3b4552;
+  border-radius: 7px;
+  background: #1b222c;
+  box-shadow: 0 10px 30px #0009;
+  color: #e6edf3;
+  font-size: 12px;
+}
+.clip-menu-title { padding: 7px 8px; color: #aab5c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px solid #343d49; }
+.clip-menu-note { color: #e8b66e; padding: 7px 8px; }
+.clip-menu > button { width: 100%; text-align: left; background: transparent; color: inherit; border: 0; border-radius: 4px; padding: 9px 8px; cursor: pointer; }
+.clip-menu button:hover:not(:disabled), .clip-menu button:focus-visible { background: #34465f; outline: none; }
+.clip-menu button:disabled { opacity: .45; cursor: not-allowed; }
+.clip-menu-speed { display: flex; align-items: center; gap: 5px; padding: 8px; }
+.clip-menu-speed span { flex: 1; }
+.clip-menu-speed button { width: 28px; height: 26px; background: #283342; border: 1px solid #455365; border-radius: 4px; color: inherit; cursor: pointer; }
+.clip-tools-popup { position: fixed; z-index: 999; right: 12px; top: 52px; bottom: 12px; width: 290px; max-width: calc(100vw - 24px); display: flex; flex-direction: column; background: #161b22; border: 1px solid #3b4552; border-radius: 7px; box-shadow: 0 10px 30px #0009; }
+.clip-tools-popup-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #30363d; font-size: 12px; color: #e6edf3; }
+.clip-tools-popup-header button { color: inherit; background: transparent; border: 0; font-size: 20px; cursor: pointer; }
+.clip-tools-popup .inspector-panel { width: auto; min-width: 0; flex: 1; border: 0; }

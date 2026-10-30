@@ -105,7 +105,7 @@ export default function useAudioMixer({
     // 🎵 Playback is active: synchronize all audio clips matching currentTime
     for (const clip of audioClips) {
       const track = trackMap.get(clip.trackId);
-      const isMuted = !track || !track.visible || track.muted;
+      const isMuted = !track || !track.visible || track.muted || clip.muted;
       const trackVolume = track?.volume ?? 1.0;
       const clipVolume = clip.volume ?? 1.0;
       const speed = clip.speed || 1;

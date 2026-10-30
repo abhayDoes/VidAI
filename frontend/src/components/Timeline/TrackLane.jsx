@@ -14,6 +14,7 @@ export default function TrackLane({
   onBeginEdit,
   isSelected,
   onSelectTrack,
+  onClipMenu,
 }) {
   const trackClips = clips.filter((clip) => clip.trackId === track.id);
   const mixed = trackClips.some((clip) => clip.type === "audio") && trackClips.some((clip) => clip.type !== "audio");
@@ -38,6 +39,7 @@ export default function TrackLane({
             onMoveTrack={onMoveClipTrack}
             onTrim={onTrimClip}
             onBeginEdit={onBeginEdit}
+            onClipMenu={onClipMenu}
           />
         ))}
     </div>

@@ -21,6 +21,7 @@ export default function Timeline({
   onSnapTime,
   onSelectClip,
   onSelectTrack,
+  onClipMenu,
   onMoveClip,
   onMoveClipTrack,
   onTrimClip,
@@ -55,6 +56,7 @@ export default function Timeline({
   );
 
   const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
     onSeek(onSnapTime(timeFromEvent(e)));
     setIsDragging(true);
     onSetScrubbing(true);
@@ -188,6 +190,7 @@ export default function Timeline({
               onSelectTrack={onSelectTrack}
               pixelsPerSecond={zoom}
               onSelectClip={onSelectClip}
+              onClipMenu={onClipMenu}
               onMoveClip={onMoveClip}
               onMoveClipTrack={onMoveClipTrack}
               onTrimClip={onTrimClip}

@@ -13,6 +13,7 @@ export default function Clip({
   onMoveTrack,
   onTrim,
   onBeginEdit,
+  onClipMenu,
 }) {
   const dragRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -118,6 +119,10 @@ export default function Clip({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${clip.type === "audio" ? "Audio" : "Video"} clip: ${clip.title}`}
+      aria-pressed={isSelected}
       className={`timeline-clip ${isSelected ? "selected" : ""} ${
         clip.type === "audio" ? "audio-clip" : "video-clip"
       }`}
@@ -128,6 +133,23 @@ export default function Clip({
         cursor: locked ? "not-allowed" : isDragging ? "grabbing" : "grab",
       }}
       onMouseDown={handleMouseDown}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClipMenu(clip.id, event.clientX, event.clientY);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onClipMenu(clip.id, rect.left, rect.bottom);
+        } else if (!locked && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(clip.id);
+        }
+      }}
       onClick={(e) => {
         e.stopPropagation();
         if (!locked) onSelect(clip.id);

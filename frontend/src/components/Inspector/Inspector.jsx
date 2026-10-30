@@ -70,7 +70,7 @@ export default function Inspector({
               start: selectedClip.sourceStart || 0,
               duration: selectedClip.duration * (selectedClip.speed || 1),
               speed: selectedClip.speed || 1,
-              volume: selectedClip.volume ?? 1,
+              volume: selectedClip.muted ? 0 : (selectedClip.volume ?? 1),
             })}>Download Audio as MP3</button>
             <div className="preset-grid">
               {AUDIO_EFFECTS.map(([effect, label]) => (
