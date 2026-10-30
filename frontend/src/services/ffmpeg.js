@@ -173,8 +173,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
   const audio = clips.filter((clip) => {
     const track = audioTracks.get(clip.trackId);
-    return (clip.type === "audio" || track?.type === "audio") &&
-      track?.visible !== false && track?.muted !== true && clip.file && clip.duration > 0;
+    return clip.type === "audio" &&
+      track?.visible !== false && clip.file && clip.duration > 0;
   });
 
   const engine = await getFFmpeg(onProgress);
@@ -199,7 +199,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
   else height = evenDimension(width / targetAspect, width);
   const graph = [];
-  const endTime = Math.max(...videos.map((clip) => Number(clip.start) + Number(clip.duration)));
+  const endTime = Math.max(...[...videos, ...audio].map((clip) => Number(clip.start) + Number(clip.duration)));
   const videoLayers = [];
   const audioLabels = [];
   graph.push(`color=c=black:s=${width}x${height}:r=30:d=${endTime},format=yuv420p[canvas]`);
@@ -242,7 +242,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
       ...atempoFilters(speed),
       `apad=pad_dur=${targetDuration}`,
       `atrim=duration=${targetDuration}`,
-      `volume=${clip.muted ? 0 : 1}`,
+      `volume=${clip.muted || audioTracks.get(clip.trackId)?.muted ? 0 : (audioTracks.get(clip.trackId)?.volume ?? 1)}`,
     ];
     if (videoAudioStreams[index]) {
       graph.push(`[${index}:a]${audioFilters.join(",")} [${audioLabel}]`);
@@ -265,13 +265,13 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   audio.forEach((clip, index) => {
     const inputIndex = audioInputStart + index;
     const track = audioTracks.get(clip.trackId);
-    const volume = Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
+    const volume = track?.muted ? 0 : Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
     const start = Math.max(0, Number(clip.sourceStart) || 0);
     const duration = Math.max(0.1, Number(clip.duration) || 0.1);
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
     const label = `music${index}`;
-    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
+    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},apad=pad_dur=${duration},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
     audioLabels.push(`[${label}]`);
   });
 

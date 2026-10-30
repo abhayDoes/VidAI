@@ -12,15 +12,17 @@ export default function TrackLane({
   onMoveClipTrack,
   onTrimClip,
   onBeginEdit,
+  isSelected,
+  onSelectTrack,
 }) {
+  const trackClips = clips.filter((clip) => clip.trackId === track.id);
+  const mixed = trackClips.some((clip) => clip.type === "audio") && trackClips.some((clip) => clip.type !== "audio");
   return (
     <div
-      className={`track-lane ${
-        track.type === "audio" ? "audio-track-lane" : "video-track-lane"
-      }`}
+      className={`track-lane ${isSelected ? "track-lane-selected" : ""} ${mixed ? "track-lane-mixed" : ""}`}
+      onMouseDown={(event) => { if (event.button === 0) onSelectTrack(track.id); }}
     >
-      {clips
-        .filter((clip) => clip.trackId === track.id)
+      {trackClips
         .map((clip) => (
           <Clip
             key={clip.id}

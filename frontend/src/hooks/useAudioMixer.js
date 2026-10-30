@@ -18,15 +18,12 @@ export default function useAudioMixer({
   const wasPlayingRef = useRef(isPlaying);
   const wasScrubbingRef = useRef(isScrubbing);
 
-  // Filter audio clips (either explicit type="audio" or placed on an audio track)
+  // Audio clips can be placed on any track.
   const trackMap = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
   const audioClips = useMemo(
     () =>
-      clips.filter((c) => {
-        const track = trackMap.get(c.trackId);
-        return c.type === "audio" || track?.type === "audio";
-      }),
-    [clips, trackMap]
+      clips.filter((c) => c.type === "audio"),
+    [clips]
   );
 
   useEffect(() => {

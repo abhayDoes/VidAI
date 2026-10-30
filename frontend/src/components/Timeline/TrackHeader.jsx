@@ -6,15 +6,16 @@ export default function TrackHeader({
   onToggleVisible,
   onSetVolume,
   onBeginEdit,
+  onToggleMute,
+  onSelectTrack,
+  isSelected,
 }) {
-  const isAudio = track.type === "audio";
-
   return (
-    <div className={`track-header-item ${isAudio ? "audio-track-header" : ""}`}>
+    <div className={`track-header-item ${isSelected ? "track-header-selected" : ""}`} onClick={() => onSelectTrack(track.id)}>
       <div className="track-header-top">
         <div className="track-title-wrap">
           <span className="track-type-badge">
-            {isAudio ? <Icons.Music /> : "🎬"}
+            🎬
           </span>
           <span className="track-name" title={track.name}>
             {track.name}
@@ -23,11 +24,12 @@ export default function TrackHeader({
       </div>
 
       <div className="track-header-actions">
-        {isAudio && onSetVolume && (
+        {onSetVolume && (
           <div className="track-volume-wrap" title={`Volume: ${Math.round((track.volume ?? 1) * 100)}%`}>
             <input
               type="range"
               onMouseDown={onBeginEdit}
+              onClick={(event) => event.stopPropagation()}
               min="0"
               max="1"
               step="0.05"
@@ -40,7 +42,7 @@ export default function TrackHeader({
 
         <span
           className={`track-action-icon ${track.locked ? "active-alert" : ""}`}
-          onClick={() => onToggleLock(track.id)}
+          onClick={(event) => { event.stopPropagation(); onToggleLock(track.id); }}
           title={track.locked ? "Unlock Track" : "Lock Track"}
         >
           {track.locked ? <Icons.Lock /> : <Icons.Unlock />}
@@ -48,24 +50,19 @@ export default function TrackHeader({
 
         <span
           className={`track-action-icon ${!track.visible ? "active-alert" : ""}`}
-          onClick={() => onToggleVisible(track.id)}
-          title={
-            isAudio
-              ? track.visible
-                ? "Mute Audio Track"
-                : "Unmute Audio Track"
-              : track.visible
-              ? "Hide Video Track"
-              : "Show Video Track"
-          }
+          onClick={(event) => { event.stopPropagation(); onToggleVisible(track.id); }}
+          title={track.visible ? "Hide Track" : "Show Track"}
         >
-          {isAudio ? (
-            track.visible ? <Icons.Volume /> : <Icons.Mute />
-          ) : track.visible ? (
+          {track.visible ? (
             <Icons.Eye />
           ) : (
             <Icons.EyeOff />
           )}
+        </span>
+        <span className={`track-action-icon ${track.muted ? "active-alert" : ""}`}
+          onClick={(event) => { event.stopPropagation(); onToggleMute(track.id); }}
+          title={track.muted ? "Unmute Track" : "Mute Track"}>
+          {track.muted ? <Icons.Mute /> : <Icons.Volume />}
         </span>
       </div>
     </div>

@@ -30,13 +30,9 @@ export default function Toolbar({
   return (
     <div className="timeline-toolbar">
       <div className="toolbar-left">
-        <button className="toolbar-btn" onClick={() => onAddTrack("video")} title="Add Video Track">
+        <button className="toolbar-btn" onClick={onAddTrack} title="Add Track">
           <Icons.AddTrack />
-          <span>+ Video</span>
-        </button>
-        <button className="toolbar-btn" onClick={() => onAddTrack("audio")} title="Add Audio Track">
-          <Icons.Music />
-          <span>+ Audio</span>
+          <span>+ Track</span>
         </button>
         <div className="toolbar-divider" />
         <button className="toolbar-icon-btn" title="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo}>

@@ -27,12 +27,18 @@ export default function VideoPlayer({
   gpuPreviewEnabled = false,
   onGpuStatus,
   muted = false,
+  trackMuted = false,
+  trackVolume = 1,
   hasClips = false,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
   const canvasRef = useRef(null);
   const gpuReady = useWebGpuPreview(videoRef, canvasRef, videoUrl, gpuPreviewEnabled, onGpuStatus);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = Math.max(0, Math.min(1, trackVolume));
+  }, [videoRef, videoUrl, trackVolume]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -95,7 +101,7 @@ export default function VideoPlayer({
             key={videoUrl}
             ref={videoRef}
             src={videoUrl}
-            muted={muted}
+            muted={muted || trackMuted}
             className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
             style={transformStyle}
             onTimeUpdate={onTimeUpdate}

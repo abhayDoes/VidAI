@@ -19,13 +19,13 @@ export default function Header({
 
       <div className="header-actions">
         {status && <span className="status-text">{status}</span>}
-        <button className="nav-btn" onClick={onImport} title="Import video files">
+        <button className="nav-btn" onClick={onImport} title="Import media to the selected track">
           {hasVideo ? "+ Add Videos" : "Import Videos"}
         </button>
         <button
           className="nav-btn audio-btn"
           onClick={onImportAudio}
-          title="Import background music or audio file (.mp3, .wav)"
+          title="Import audio to the selected track"
         >
           {hasAudio ? "+ Add Audio" : "🎵 Import Audio"}
         </button>

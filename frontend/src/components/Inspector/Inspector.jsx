@@ -19,6 +19,7 @@ const AUDIO_EFFECTS = [
 export default function Inspector({
   videoFile,
   selectedClip,
+  selectedTrack,
   transform,
   onTransformChange,
   onUpdateClip,
@@ -31,6 +32,10 @@ export default function Inspector({
   return (
     <aside className="inspector-panel">
       <div className="inspector-heading">Inspector &amp; Edit Tools</div>
+      <div className="inspector-section">
+        <div className="section-title">{selectedTrack?.name || "Select a track"}</div>
+        <p className="muted-note">{selectedClip ? `${selectedClip.type === "audio" ? "Audio" : "Video"}: ${selectedClip.title}` : "Click an audio or video clip to see its editing tools."}</p>
+      </div>
 
       {selectedClip?.type === "audio" && (
         <div className="inspector-section audio-inspector-section">
@@ -110,6 +115,7 @@ export default function Inspector({
         />
       </div>
 
+      {selectedClip?.type !== "audio" && selectedClip && <>
       <div className="inspector-section">
         <div className="section-title">Rotate &amp; Flip</div>
         {selectedClip?.type === "audio" ? (
@@ -163,6 +169,7 @@ export default function Inspector({
           />
         )}
       </div>
+      </>}
 
     </aside>
   );

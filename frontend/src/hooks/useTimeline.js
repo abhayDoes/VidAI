@@ -4,9 +4,9 @@ export const PIXELS_PER_SECOND = 20;
 const HISTORY_LIMIT = 100;
 const initial = {
   tracks: [
-    { id: 2, name: "Track 2", type: "video", locked: false, visible: true },
-    { id: 1, name: "Track 1", type: "video", locked: false, visible: true },
-    { id: 101, name: "Audio Track 1 (BGM)", type: "audio", volume: 0.8, locked: false, visible: true },
+    { id: 3, name: "Track 3", volume: 1, locked: false, visible: true, muted: false },
+    { id: 2, name: "Track 2", volume: 1, locked: false, visible: true, muted: false },
+    { id: 1, name: "Track 1", volume: 1, locked: false, visible: true, muted: false },
   ],
   clips: [], markers: [],
 };
@@ -38,6 +38,9 @@ export default function useTimeline({ videoDuration }) {
   const [history, dispatch] = useReducer(historyReducer, { past: [], present: initial, future: [], group: null });
   const { tracks, clips, markers } = history.present;
   const [selection, setSelectedClipId] = useState(null);
+  const [trackSelection, setSelectedTrackId] = useState(1);
+  const selectedTrackId = clips.find((clip) => clip.id === selection)?.trackId ??
+    (tracks.some((track) => track.id === trackSelection) ? trackSelection : tracks[0]?.id);
   const selectedClipId = clips.some((clip) => clip.id === selection) ? selection : null;
   const [isSnapping, setIsSnapping] = useState(true);
   const edit = useCallback((update) => dispatch({ type: "edit", update }), []);
@@ -55,12 +58,12 @@ export default function useTimeline({ videoDuration }) {
   const addClip = useCallback((clip) => {
     edit((state) => ({ ...state, clips: [...state.clips, clip] }));
     setSelectedClipId(clip.id);
+    setSelectedTrackId(clip.trackId);
   }, [edit]);
-  const addTrack = useCallback((type = "video") => edit((state) => {
+  const addTrack = useCallback(() => edit((state) => {
     const nextId = state.tracks.length ? Math.max(...state.tracks.map((t) => t.id)) + 1 : 1;
-    const count = state.tracks.filter((t) => (t.type || "video") === type).length + 1;
-    const track = { id: nextId, name: type === "audio" ? `Audio Track ${count}` : `Track ${count}`, type, volume: 0.8, locked: false, visible: true };
-    return { ...state, tracks: type === "audio" ? [...state.tracks, track] : [track, ...state.tracks] };
+    const track = { id: nextId, name: `Track ${nextId}`, volume: 1, locked: false, visible: true, muted: false };
+    return { ...state, tracks: [track, ...state.tracks] };
   }), [edit]);
   const updateTrack = useCallback((trackId, change) => edit((state) => {
     const index = state.tracks.findIndex((track) => track.id === trackId);
@@ -72,6 +75,13 @@ export default function useTimeline({ videoDuration }) {
   const setTrackVolume = useCallback((id, volume) => updateTrack(id, () => ({ volume: Math.max(0, Math.min(1, volume)) })), [updateTrack]);
   const toggleTrackLock = useCallback((id) => updateTrack(id, (track) => ({ locked: !track.locked })), [updateTrack]);
   const toggleTrackVisible = useCallback((id) => updateTrack(id, (track) => ({ visible: !track.visible })), [updateTrack]);
+  const toggleTrackMute = useCallback((id) => updateTrack(id, (track) => ({ muted: !track.muted })), [updateTrack]);
+  const selectTrack = useCallback((id) => { setSelectedTrackId(id); setSelectedClipId(null); }, []);
+  const selectClip = useCallback((id) => {
+    setSelectedClipId(id);
+    const clip = clips.find((item) => item.id === id);
+    if (clip) setSelectedTrackId(clip.trackId);
+  }, [clips]);
   const updateClip = useCallback((id, patch) => edit((state) => {
     const index = state.clips.findIndex((clip) => clip.id === id);
     if (index < 0 || Object.entries(patch).every(([key, value]) => state.clips[index][key] === value)) return state;
@@ -121,7 +131,7 @@ export default function useTimeline({ videoDuration }) {
   const moveClipToTrack = useCallback((clipId, trackId) => edit((state) => {
     const clip = state.clips.find((item) => item.id === clipId);
     const target = state.tracks.find((track) => track.id === trackId);
-    if (!clip || !target || target.locked || clip.trackId === trackId || (clip.type === "audio") !== (target.type === "audio")) return state;
+    if (!clip || !target || target.locked || clip.trackId === trackId) return state;
     return { ...state, clips: state.clips.map((item) => item.id === clipId ? { ...item, trackId } : item) };
   }), [edit]);
   const snapTime = useCallback((rawTime, ignoreClipId = null) => {
@@ -135,9 +145,9 @@ export default function useTimeline({ videoDuration }) {
     return Math.max(0, best);
   }, [isSnapping, clips, markers]);
 
-  return { tracks, clips, markers, selectedClipId, isSnapping, setIsSnapping,
+  return { tracks, clips, markers, selectedClipId, selectedTrackId, selectTrack, isSnapping, setIsSnapping,
     timelineDuration: Math.max(videoDuration, 120), addClip, addTrack, toggleTrackLock, toggleTrackVisible,
-    setTrackVolume, splitClip, addMarker, deleteClip, updateClip, moveClipToTrack,
-    selectClip: setSelectedClipId, snapTime, undo, redo, beginHistoryGroup, startHistoryGroup, endHistoryGroup,
+    setTrackVolume, toggleTrackMute, splitClip, addMarker, deleteClip, updateClip, moveClipToTrack,
+    selectClip, snapTime, undo, redo, beginHistoryGroup, startHistoryGroup, endHistoryGroup,
     canUndo: !history.group && history.past.length > 0, canRedo: !history.group && history.future.length > 0 };
 }

@@ -102,32 +102,14 @@ export default function App() {
     event.target.value = "";
     if (!files.length) return;
 
-    // Dedicated target video track & starting position calculation
-    const videoTracks = timeline.tracks.filter((t) => t.type !== "audio");
-    const primaryVideoTrack =
-      videoTracks.find((t) => t.id === 1) ||
-      videoTracks[videoTracks.length - 1] ||
-      videoTracks[0];
-    const targetVideoTrackId = primaryVideoTrack ? primaryVideoTrack.id : 1;
-
-    const existingVideoClips = timeline.clips.filter(
-      (c) => c.trackId === targetVideoTrackId && c.type !== "audio"
-    );
-    let nextVideoStart = existingVideoClips.reduce(
-      (end, c) => Math.max(end, c.start + c.duration),
-      0
-    );
-
-    // Dedicated target audio track & starting position calculation
-    const audioTrack =
-      timeline.tracks.find((t) => t.type === "audio") ||
-      timeline.tracks[timeline.tracks.length - 1];
-    const audioTrackId = audioTrack ? audioTrack.id : 101;
-    const existingAudioClips = timeline.clips.filter((c) => c.trackId === audioTrackId);
-    let nextAudioStart = existingAudioClips.reduce(
-      (end, c) => Math.max(end, c.start + c.duration),
-      0
-    );
+    const targetTrack = timeline.tracks.find((track) => track.id === timeline.selectedTrackId);
+    if (!targetTrack || targetTrack.locked) {
+      setStatus("Select an unlocked track before importing media");
+      return;
+    }
+    let nextStart = player.currentTime;
+    const occupied = timeline.clips.filter((clip) => clip.trackId === targetTrack.id)
+      .map((clip) => ({ start: clip.start, end: clip.start + clip.duration }));
 
     const importedClips = [];
 
@@ -135,17 +117,12 @@ export default function App() {
       try {
         const isAudio = isAudioFile(file);
         let media;
-        let trackId = targetVideoTrackId;
-        let clipStart = 0;
+        const trackId = targetTrack.id;
 
         if (isAudio) {
           media = await loadAudioFile(file);
-          trackId = audioTrackId;
-          clipStart = nextAudioStart;
         } else {
           media = await player.loadVideo(file);
-          trackId = targetVideoTrackId;
-          clipStart = nextVideoStart;
         }
 
         if (!media) continue;
@@ -154,6 +131,11 @@ export default function App() {
           Number.isFinite(media.duration) && media.duration > 0
             ? media.duration
             : 30;
+
+        let clipStart = nextStart;
+        for (const range of [...occupied].sort((a, b) => a.start - b.start)) {
+          if (clipStart < range.end && clipStart + safeDuration > range.start) clipStart = range.end;
+        }
 
         const clip = {
           id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
@@ -177,11 +159,8 @@ export default function App() {
         timeline.addClip(clip);
         importedClips.push(clip);
 
-        if (isAudio) {
-          nextAudioStart += safeDuration;
-        } else {
-          nextVideoStart += safeDuration;
-        }
+        nextStart = clipStart + safeDuration;
+        occupied.push({ start: clipStart, end: nextStart });
       } catch (error) {
         console.error(error);
         setStatus(`Could not read ${file.name}`);
@@ -198,7 +177,7 @@ export default function App() {
         firstClip.speed || 1
       );
       setStatus(
-        `Added ${importedClips.length} track item${importedClips.length === 1 ? "" : "s"} to the timeline`
+        `Added ${importedClips.length} item${importedClips.length === 1 ? "" : "s"} to ${targetTrack.name}`
       );
     }
   };
@@ -270,8 +249,8 @@ export default function App() {
       const current = timeline.clips.find((clip) => clip.id === selectedClip.id);
       if (!current) { URL.revokeObjectURL(result.url); return; }
       if (operation === "extract-audio") {
-        const audioTrack = timeline.tracks.find((track) => track.type === "audio");
-        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Add an audio track before extracting audio."); }
+        const audioTrack = timeline.tracks.find((track) => !track.locked && track.id !== current.trackId) || timeline.tracks.find((track) => !track.locked);
+        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Select an unlocked track before extracting audio."); }
         timeline.startHistoryGroup();
         timeline.updateClip(current.id, { muted: true });
         timeline.addClip({ ...current, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -476,6 +455,8 @@ export default function App() {
             gpuPreviewEnabled={gpuPreviewEnabled}
             onGpuStatus={setStatus}
             muted={activeClip?.muted || false}
+            trackMuted={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.muted || false}
+            trackVolume={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.volume ?? 1}
           />
           <Controls
             isPlaying={player.isPlaying}
@@ -490,6 +471,7 @@ export default function App() {
         <Inspector
           videoFile={selectedClip?.file}
           selectedClip={selectedClip}
+          selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
           transform={selectedTransform}
           onTransformChange={(next) =>
             selectedClip && timeline.updateClip(selectedClip.id, next)
@@ -506,6 +488,7 @@ export default function App() {
         clips={timeline.clips}
         markers={timeline.markers}
         selectedClipId={timeline.selectedClipId}
+        selectedTrackId={timeline.selectedTrackId}
         isSnapping={timeline.isSnapping}
         currentTime={player.currentTime}
         duration={timelineDuration}
@@ -513,6 +496,7 @@ export default function App() {
         onSetScrubbing={player.setScrubbing}
         onSnapTime={timeline.snapTime}
         onSelectClip={handleSelectClip}
+        onSelectTrack={timeline.selectTrack}
         onMoveClip={handleMoveClip}
         onMoveClipTrack={timeline.moveClipToTrack}
         onTrimClip={timeline.updateClip}
@@ -528,6 +512,7 @@ export default function App() {
         onAddMarker={() => timeline.addMarker(player.currentTime)}
         onToggleTrackLock={timeline.toggleTrackLock}
         onToggleTrackVisible={timeline.toggleTrackVisible}
+        onToggleTrackMute={timeline.toggleTrackMute}
         onSetTrackVolume={timeline.setTrackVolume}
       />
     </div>

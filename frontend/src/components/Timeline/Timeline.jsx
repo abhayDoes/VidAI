@@ -12,6 +12,7 @@ export default function Timeline({
   clips,
   markers,
   selectedClipId,
+  selectedTrackId,
   isSnapping,
   currentTime,
   duration,
@@ -19,6 +20,7 @@ export default function Timeline({
   onSetScrubbing,
   onSnapTime,
   onSelectClip,
+  onSelectTrack,
   onMoveClip,
   onMoveClipTrack,
   onTrimClip,
@@ -34,6 +36,7 @@ export default function Timeline({
   onAddMarker,
   onToggleTrackLock,
   onToggleTrackVisible,
+  onToggleTrackMute,
   onSetTrackVolume,
 }) {
   const tracksAreaRef = useRef(null);
@@ -136,8 +139,11 @@ export default function Timeline({
             <TrackHeader
               key={track.id}
               track={track}
+              isSelected={track.id === selectedTrackId}
+              onSelectTrack={onSelectTrack}
               onToggleLock={onToggleTrackLock}
               onToggleVisible={onToggleTrackVisible}
+              onToggleMute={onToggleTrackMute}
               onSetVolume={onSetTrackVolume}
               onBeginEdit={onBeginEdit}
             />
@@ -178,6 +184,8 @@ export default function Timeline({
               trackIndex={index}
               clips={clips}
               selectedClipId={selectedClipId}
+              isSelected={track.id === selectedTrackId}
+              onSelectTrack={onSelectTrack}
               pixelsPerSecond={zoom}
               onSelectClip={onSelectClip}
               onMoveClip={onMoveClip}
