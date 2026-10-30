@@ -21,6 +21,7 @@ export default function Timeline({
   onSelectClip,
   onMoveClip,
   onMoveClipTrack,
+  onTrimClip,
   onAddTrack,
   onToggleSnap,
   onSplitClip,
@@ -171,6 +172,7 @@ export default function Timeline({
               onSelectClip={onSelectClip}
               onMoveClip={onMoveClip}
               onMoveClipTrack={onMoveClipTrack}
+              onTrimClip={onTrimClip}
             />
           ))}
         </div>

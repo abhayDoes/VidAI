@@ -118,14 +118,7 @@ export default function useVideoPlayer() {
       const delta = (now - lastTime) / 1000;
       lastTime = now;
 
-      const video = videoRef.current;
-      const isVideoDriving =
-        video &&
-        video.src &&
-        !video.paused &&
-        Number.isFinite(video.currentTime);
-
-      if (!isVideoDriving && !scrubbingRef.current) {
+      if (!scrubbingRef.current) {
         setCurrentTime((prev) => {
           const next = prev + delta;
           if (next >= duration) {

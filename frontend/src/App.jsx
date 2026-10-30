@@ -25,7 +25,7 @@ export default function App() {
   const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
 
   const player = useVideoPlayer();
-  const { setVideoSource, setIsPlaying, setDuration } = player;
+  const { setVideoSource, setDuration, isPlaying, currentTime, setIsPlaying, seekTo } = player;
   const timeline = useTimeline({ videoDuration: player.duration });
 
   // Manage frontend-level background audio track playback in sync with playhead
@@ -87,8 +87,14 @@ export default function App() {
 
   useEffect(() => {
     setVideoSource(activeClip?.file, activeClip?.sourceUrl);
-    if (!activeClip) setIsPlaying(false);
-  }, [activeClip, setIsPlaying, setVideoSource]);
+  }, [activeClip, setVideoSource]);
+
+  useEffect(() => {
+    if (isPlaying && timelineEnd > 0 && currentTime >= timelineEnd) {
+      setIsPlaying(false);
+      seekTo(timelineEnd);
+    }
+  }, [isPlaying, currentTime, setIsPlaying, seekTo, timelineEnd]);
 
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
@@ -324,43 +330,12 @@ export default function App() {
     }
   };
 
-  const handleTimeUpdate = () => {
-    if (!activeClip || player.isScrubbing()) return;
-
-    const activeSpeed = activeClip.speed || 1;
-    const sourceStart = activeClip.sourceStart || 0;
-    const sourceTime = player.videoRef.current?.currentTime;
-    if (!Number.isFinite(sourceTime)) return;
-
-    const timelineTime =
-      activeClip.start + (sourceTime - sourceStart) / activeSpeed;
-    const clipEnd = activeClip.start + activeClip.duration;
-    // Hand off just before the exact end: timeupdate events only fire a few
-    // times per second, so waiting for the precise boundary overshoots it.
-    if (player.isPlaying && timelineTime >= clipEnd - 1 / 30) {
-      const nextClip = timeline.clips
-        .filter(
-          (clip) =>
-            visibleTrackIds.has(clip.trackId) &&
-            clip.start >= clipEnd - 0.05
-        )
-        .sort((a, b) => a.start - b.start)[0];
-
-      if (nextClip) {
-        player.seekTo(
-          nextClip.start,
-          nextClip.start,
-          nextClip.sourceStart || 0,
-          nextClip.speed || 1
-        );
-      } else {
-        player.seekTo(clipEnd);
-        player.setIsPlaying(false);
-      }
-      return;
+  const handleSeek = (time) => {
+    if (activeClip && time >= activeClip.start && time < activeClip.start + activeClip.duration) {
+      player.seekTo(time, activeClip.start, activeClip.sourceStart || 0, activeClip.speed || 1);
+    } else {
+      player.seekTo(time);
     }
-
-    player.handleTimeUpdate(activeClip.start, sourceStart, activeSpeed);
   };
 
   const handleTogglePlay = useCallback(() => {
@@ -370,22 +345,11 @@ export default function App() {
       return;
     }
 
-    if (activeClip) {
-      player.setIsPlaying(true);
-      player.videoRef.current?.play().catch(() => {});
-      return;
-    }
-
-    // If playhead is over an audio clip or within timeline, start playing
-    if (player.currentTime < timelineDuration) {
-      player.setIsPlaying(true);
-      return;
-    }
-
-    // At the end of timeline, wrap to 0 and play
-    player.seekTo(0);
+    if (!timelineEnd) return;
+    if (player.currentTime >= timelineEnd - 0.001) player.seekTo(0);
     player.setIsPlaying(true);
-  }, [player, activeClip, timelineDuration]);
+    player.videoRef.current?.play().catch(() => {});
+  }, [player, timelineEnd]);
 
   // Spacebar to play/pause anywhere in the editor
   useEffect(() => {
@@ -408,31 +372,6 @@ export default function App() {
     player.videoRef.current?.pause();
     player.seekTo(0);
   }, [player]);
-
-  const handleVideoEnded = () => {
-    if (!activeClip) {
-      player.setIsPlaying(false);
-      return;
-    }
-    const nextClip = timeline.clips
-      .filter(
-        (clip) =>
-          visibleTrackIds.has(clip.trackId) &&
-          clip.start >= activeClip.start + activeClip.duration
-      )
-      .sort((a, b) => a.start - b.start)[0];
-
-    if (nextClip) {
-      player.seekTo(
-        nextClip.start,
-        nextClip.start,
-        nextClip.sourceStart || 0,
-        nextClip.speed || 1
-      );
-    } else {
-      player.setIsPlaying(false);
-    }
-  };
 
   const handleSplitClip = () =>
     timeline.splitClip(timeline.selectedClipId, player.currentTime);
@@ -510,8 +449,7 @@ export default function App() {
             flipH={activeTransform.flipH}
             flipV={activeTransform.flipV}
             aspectRatio={activeTransform.aspectRatio}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleVideoEnded}
+            hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
             gpuPreviewEnabled={gpuPreviewEnabled}
@@ -524,7 +462,7 @@ export default function App() {
             duration={timelineDuration}
             onTogglePlay={handleTogglePlay}
             onStop={handleStop}
-            onSeek={player.seekTo}
+            onSeek={handleSeek}
           />
         </div>
 
@@ -549,12 +487,13 @@ export default function App() {
         isSnapping={timeline.isSnapping}
         currentTime={player.currentTime}
         duration={timelineDuration}
-        onSeek={player.seekTo}
+        onSeek={handleSeek}
         onSetScrubbing={player.setScrubbing}
         onSnapTime={timeline.snapTime}
         onSelectClip={handleSelectClip}
         onMoveClip={handleMoveClip}
         onMoveClipTrack={timeline.moveClipToTrack}
+        onTrimClip={timeline.updateClip}
         onAddTrack={timeline.addTrack}
         onToggleSnap={() => timeline.setIsSnapping(!timeline.isSnapping)}
         onSplitClip={handleSplitClip}

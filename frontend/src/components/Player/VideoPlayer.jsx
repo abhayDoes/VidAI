@@ -27,6 +27,7 @@ export default function VideoPlayer({
   gpuPreviewEnabled = false,
   onGpuStatus,
   muted = false,
+  hasClips = false,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
@@ -120,9 +121,9 @@ export default function VideoPlayer({
           />
         </div>
       ) : (
-        <div className="empty-preview" onClick={onImportClick}>
+        <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>
           <span className="import-prompt">
-            Click to import videos or move the playhead over a clip
+            {hasClips ? "No video at the playhead" : "Click to import videos"}
           </span>
         </div>
       )}
