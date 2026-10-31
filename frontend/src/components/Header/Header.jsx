@@ -8,8 +8,6 @@ export default function Header({
   onImport,
   onImportAudio,
   onExport,
-  gpuPreviewEnabled,
-  onToggleGpuPreview,
 }) {
   return (
     <header className="editor-header">
@@ -30,13 +28,6 @@ export default function Header({
           title="Import audio to the selected track"
         >
           {hasAudio ? "+ Add Audio" : "🎵 Import Audio"}
-        </button>
-        <button
-          className={`nav-btn ${gpuPreviewEnabled ? "gpu-btn-active" : ""}`}
-          onClick={onToggleGpuPreview}
-          title="Use WebGPU to render the video preview when supported"
-        >
-          WebGPU {gpuPreviewEnabled ? "On" : "Off"}
         </button>
         <button className="nav-btn primary" onClick={onExport}>
           Export Video

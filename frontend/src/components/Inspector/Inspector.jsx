@@ -1,7 +1,5 @@
-import TrimControls from "./TrimControls";
 import SpeedControls from "./SpeedControls";
 import Transform from "./Transform";
-import CropControls from "./CropControls";
 import "./Inspector.css";
 
 const RESOLUTIONS = [
@@ -94,17 +92,6 @@ export default function Inspector({
         )}
       </div>
 
-      <TrimControls
-        key={selectedClip ? selectedClip.id : "none"}
-        selectedClip={selectedClip}
-        onUpdateClip={onUpdateClip}
-        onBeginEdit={onBeginEdit}
-        onApply={() => onProcessClip("trim", {
-          start: selectedClip?.sourceStart || 0,
-          duration: (selectedClip?.duration || 0) * (selectedClip?.speed || 1),
-        })}
-      />
-
       <div className="inspector-section">
         <div className="section-title">Speed</div>
         <SpeedControls
@@ -157,18 +144,6 @@ export default function Inspector({
         )}
       </div>
 
-      <div className="inspector-section">
-        <div className="section-title">Crop Video</div>
-        {selectedClip?.type === "audio" ? (
-          <p className="muted-note">Cropping is available for video clips only.</p>
-        ) : (
-          <CropControls
-            key={selectedClip?.id || "no-clip"}
-            selectedClip={selectedClip}
-            onApply={(options) => onProcessClip("crop", options)}
-          />
-        )}
-      </div>
       </>}
 
     </aside>

@@ -25,7 +25,6 @@ export default function App() {
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
   const [status, setStatus] = useState("");
-  const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
   const [clipMenu, setClipMenu] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState("media");
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
@@ -439,8 +438,6 @@ export default function App() {
         onImport={() => fileInputRef.current?.click()}
         onImportAudio={() => audioInputRef.current?.click()}
         onExport={handleExport}
-        gpuPreviewEnabled={gpuPreviewEnabled}
-        onToggleGpuPreview={() => setGpuPreviewEnabled((enabled) => !enabled)}
       />
 
       <input
@@ -506,7 +503,7 @@ export default function App() {
             hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
-            gpuPreviewEnabled={gpuPreviewEnabled}
+            gpuPreviewEnabled={true}
             onGpuStatus={setStatus}
             muted={activeClip?.muted || false}
             trackMuted={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.muted || false}
