@@ -103,7 +103,8 @@ export default function App() {
     }
   }, [isPlaying, currentTime, setIsPlaying, seekTo, timelineEnd]);
 
-  const handleFileChange = async (event) => {
+
+    const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length) return;

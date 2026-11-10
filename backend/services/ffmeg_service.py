@@ -102,8 +102,7 @@ def merge_videos(input_paths, output_path):
 
 def _atempo_values(speed):
     """Split a speed factor into atempo values within the 0.5-2.0 range."""
-  if not segments:
-       values = []
+    values = []
     remaining = float(speed)
     while remaining > 2.0 + 1e-9:
         values.append(2.0)
@@ -117,7 +116,8 @@ def _atempo_values(speed):
 
 def merge_video_segments(segments, output_path):
     """Render retained source ranges in order, trimming cut/deleted sections."""
-       raise ValueError("At least one video segment is required")
+    if not segments:
+        raise ValueError("At least one video segment is required")
 
     first_probe = ffmpeg.probe(segments[0]["path"])
     first_video = next(

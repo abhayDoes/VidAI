@@ -22,10 +22,7 @@ UPLOAD_DIR = os.path.join("uploads", "videos")
 OUTPUT_DIR = os.path.join("uploads", "outputs")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-# Mount uploads so frontend can view/stream source and processed videos
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
 
 @app.get("/")
 async def root():
