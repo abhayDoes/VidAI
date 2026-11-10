@@ -65,6 +65,14 @@
   visibility: hidden;
 }
 
+.image-overlay-layer {
+  position: absolute;
+  z-index: 2;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
 .empty-preview {
   display: flex;
   align-items: center;

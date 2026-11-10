@@ -14,6 +14,7 @@ export default function VideoPlayer({
   clipStart = 0,
   sourceStart = 0,
   speed = 1,
+  imageOverlays = [],
   currentTime = 0,
   isPlaying = false,
   rotation,
@@ -96,36 +97,54 @@ export default function VideoPlayer({
 
   return (
     <main className="preview-workspace">
-      {videoUrl ? (
+      {videoUrl || imageOverlays.length ? (
         <div className={`player-frame ${ASPECT_CLASS[aspectRatio] || "aspect-16-9"}`}>
-          <video
-            key={videoUrl}
-            ref={videoRef}
-            src={videoUrl}
-            muted={muted || trackMuted}
-            className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
-            style={transformStyle}
-            onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={(event) => {
-              const video = event.currentTarget;
-              if (Number.isFinite(speed) && speed > 0) {
-                video.playbackRate = speed;
-              }
-              video.currentTime = Math.max(
-                0,
-                sourceStart + (currentTime - clipStart) * speed
-              );
-              if (isPlaying) video.play().catch(() => {});
-            }}
-            onEnded={onEnded}
-            onClick={onTogglePlay}
-          />
-          <canvas
-            ref={canvasRef}
-            className={`video-screen gpu-preview-canvas ${gpuReady ? "gpu-preview-ready" : ""}`}
-            style={transformStyle}
-            aria-hidden="true"
-          />
+          {videoUrl && <>
+            <video
+              key={videoUrl}
+              ref={videoRef}
+              src={videoUrl}
+              muted={muted || trackMuted}
+              className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
+              style={transformStyle}
+              onTimeUpdate={onTimeUpdate}
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget;
+                if (Number.isFinite(speed) && speed > 0) {
+                  video.playbackRate = speed;
+                }
+                video.currentTime = Math.max(
+                  0,
+                  sourceStart + (currentTime - clipStart) * speed
+                );
+                if (isPlaying) video.play().catch(() => {});
+              }}
+              onEnded={onEnded}
+              onClick={onTogglePlay}
+            />
+            <canvas
+              ref={canvasRef}
+              className={`video-screen gpu-preview-canvas ${gpuReady ? "gpu-preview-ready" : ""}`}
+              style={transformStyle}
+              aria-hidden="true"
+            />
+          </>}
+          {imageOverlays.map((image) => (
+            <img
+              key={image.id}
+              className="image-overlay-layer"
+              src={image.sourceUrl}
+              alt={image.title || "Image overlay"}
+              draggable="false"
+              style={{
+                width: `${Math.max(5, Math.min(100, image.overlayScale ?? 25))}%`,
+                height: `${Math.max(5, Math.min(100, image.overlayScale ?? 25))}%`,
+                left: `${Math.max(0, Math.min(100, image.overlayX ?? 50))}%`,
+                top: `${Math.max(0, Math.min(100, image.overlayY ?? 50))}%`,
+                transform: `translate(-50%, -50%) rotate(${image.rotation || 0}deg) scaleX(${image.flipH ? -1 : 1}) scaleY(${image.flipV ? -1 : 1})`,
+              }}
+            />
+          ))}
         </div>
       ) : (
         <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>

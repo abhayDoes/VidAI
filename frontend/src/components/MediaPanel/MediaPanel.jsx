@@ -23,8 +23,8 @@ export default function MediaPanel({ clips, selectedClipId, onImport, onSelectCl
           </div>
         ) : filtered.length === 0 ? <p className="media-no-results">No clips match your search.</p> : filtered.map((clip) => (
           <button type="button" key={clip.id} className={`media-item ${clip.id === selectedClipId ? "selected" : ""}`} onClick={() => onSelectClip(clip.id)} title={`Select ${clip.title}`}>
-            <span className={`media-item-icon ${clip.type === "audio" ? "audio" : "video"}`} aria-hidden="true">{clip.type === "audio" ? "♫" : "▶"}</span>
-            <span className="media-item-text"><strong>{clip.title}</strong><small>{clip.type === "audio" ? "Audio" : "Video"} · {clip.duration.toFixed(1)}s</small></span>
+            <span className={`media-item-icon ${clip.type === "audio" ? "audio" : "video"}`} aria-hidden="true">{clip.type === "audio" ? "♫" : clip.type === "image" ? "▧" : "▶"}</span>
+            <span className="media-item-text"><strong>{clip.title}</strong><small>{clip.type === "audio" ? "Audio" : clip.type === "image" ? "Image overlay" : "Video"} · {clip.duration.toFixed(1)}s</small></span>
           </button>
         ))}
       </div>
