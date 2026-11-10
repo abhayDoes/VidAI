@@ -60,10 +60,11 @@ async function execute(engine, args) {
 
 async function processClipInternal(file, operation, options = {}, onProgress) {
   const audioOnly = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i.test(file.name);
-  if (audioOnly && operation !== "trim") throw new Error("Rotate, resize, and crop are available for video clips only.");
+  if (audioOnly && !["trim", "audio-effect", "audio-export"].includes(operation)) throw new Error("This edit is available for video clips only.");
+  if (["audio-effect", "audio-export"].includes(operation) && !audioOnly) throw new Error("Select an audio clip first.");
   const engine = await getFFmpeg(onProgress);
   const input = await writeInput(engine, file);
-  const output = nextFileName(operation, audioOnly ? "mp3" : "mp4");
+  const output = nextFileName(operation, audioOnly || operation === "extract-audio" ? "mp3" : "mp4");
   try {
   const filters = [];
   const args = ["-i", input];
@@ -73,6 +74,29 @@ async function processClipInternal(file, operation, options = {}, onProgress) {
     const duration = Math.max(0.1, Number(options.duration) || 0.1);
     args.splice(0, 0, "-ss", String(start));
     args.push("-t", String(duration));
+  } else if (["audio-effect", "audio-export", "extract-audio"].includes(operation)) {
+    const start = Math.max(0, Number(options.start) || 0);
+    const duration = Number(options.duration);
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error("Choose a valid audio range.");
+    args.splice(0, 0, "-ss", String(start), "-t", String(duration));
+    if (operation === "audio-effect") {
+      const fade = Math.min(2, duration / 2);
+      const effects = {
+        quieter: "volume=0.5", louder: "volume=2", mute: "volume=0",
+        fade: `afade=t=in:d=${fade},afade=t=out:st=${duration - fade}:d=${fade}`,
+        normalize: "loudnorm=I=-16:TP=-1.5:LRA=11", denoise: "afftdn=nr=12",
+        eq: "highpass=f=80,lowpass=f=8000", echo: "aecho=0.8:0.9:300:0.4",
+        reverse: "areverse", mono: "aformat=channel_layouts=mono",
+      };
+      if (!Object.hasOwn(effects, options.effect)) throw new Error("Choose a supported audio effect.");
+      args.push("-af", effects[options.effect]);
+    } else if (operation === "audio-export") {
+      const speed = Number(options.speed);
+      if (!Number.isFinite(speed) || speed <= 0) throw new Error("Choose a valid audio speed.");
+      const volume = Math.max(0, Math.min(1, Number(options.volume ?? 1)));
+      if (!Number.isFinite(volume)) throw new Error("Choose a valid audio volume.");
+      args.push("-af", [...atempoFilters(speed), `volume=${volume}`].join(","));
+    }
   } else if (operation === "rotate") {
     const angle = ((Number(options.angle) || 90) % 360 + 360) % 360;
     if (angle === 90) filters.push("transpose=1");
@@ -98,7 +122,7 @@ async function processClipInternal(file, operation, options = {}, onProgress) {
   }
 
   if (filters.length) args.push("-vf", filters.join(","));
-  if (audioOnly) {
+  if (audioOnly || operation === "extract-audio") {
     args.push("-vn", "-c:a", "libmp3lame", "-b:a", "192k", output);
   } else {
     args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output);
@@ -149,8 +173,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
   const audio = clips.filter((clip) => {
     const track = audioTracks.get(clip.trackId);
-    return (clip.type === "audio" || track?.type === "audio") &&
-      track?.visible !== false && track?.muted !== true && clip.file && clip.duration > 0;
+    return clip.type === "audio" &&
+      track?.visible !== false && clip.file && clip.duration > 0;
   });
 
   const engine = await getFFmpeg(onProgress);
@@ -175,7 +199,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
   else height = evenDimension(width / targetAspect, width);
   const graph = [];
-  const endTime = Math.max(...videos.map((clip) => Number(clip.start) + Number(clip.duration)));
+  const endTime = Math.max(...[...videos, ...audio].map((clip) => Number(clip.start) + Number(clip.duration)));
   const videoLayers = [];
   const audioLabels = [];
   graph.push(`color=c=black:s=${width}x${height}:r=30:d=${endTime},format=yuv420p[canvas]`);
@@ -218,6 +242,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
       ...atempoFilters(speed),
       `apad=pad_dur=${targetDuration}`,
       `atrim=duration=${targetDuration}`,
+      `volume=${clip.muted || audioTracks.get(clip.trackId)?.muted ? 0 : (audioTracks.get(clip.trackId)?.volume ?? 1)}`,
     ];
     if (videoAudioStreams[index]) {
       graph.push(`[${index}:a]${audioFilters.join(",")} [${audioLabel}]`);
@@ -240,13 +265,13 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   audio.forEach((clip, index) => {
     const inputIndex = audioInputStart + index;
     const track = audioTracks.get(clip.trackId);
-    const volume = Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
+    const volume = track?.muted || clip.muted ? 0 : Math.max(0, Math.min(1, (clip.volume ?? 1) * (track?.volume ?? 1)));
     const start = Math.max(0, Number(clip.sourceStart) || 0);
     const duration = Math.max(0.1, Number(clip.duration) || 0.1);
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
     const label = `music${index}`;
-    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
+    graph.push(`[${inputIndex}:a]atrim=start=${start}:duration=${duration * speed},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo,${atempoFilters(speed).join(",")},apad=pad_dur=${duration},atrim=duration=${duration},volume=${volume},adelay=${delay}|${delay}[${label}]`);
     audioLabels.push(`[${label}]`);
   });
 

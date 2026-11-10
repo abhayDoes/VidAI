@@ -12,6 +12,7 @@ export default function Timeline({
   clips,
   markers,
   selectedClipId,
+  selectedTrackId,
   isSnapping,
   currentTime,
   duration,
@@ -19,8 +20,16 @@ export default function Timeline({
   onSetScrubbing,
   onSnapTime,
   onSelectClip,
+  onSelectTrack,
+  onClipMenu,
   onMoveClip,
   onMoveClipTrack,
+  onTrimClip,
+  onBeginEdit,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onAddTrack,
   onToggleSnap,
   onSplitClip,
@@ -28,6 +37,7 @@ export default function Timeline({
   onAddMarker,
   onToggleTrackLock,
   onToggleTrackVisible,
+  onToggleTrackMute,
   onSetTrackVolume,
 }) {
   const tracksAreaRef = useRef(null);
@@ -46,6 +56,7 @@ export default function Timeline({
   );
 
   const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
     onSeek(onSnapTime(timeFromEvent(e)));
     setIsDragging(true);
     onSetScrubbing(true);
@@ -116,6 +127,10 @@ export default function Timeline({
         onSplitClip={onSplitClip}
         onDeleteClip={onDeleteClip}
         onAddMarker={onAddMarker}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       <div className="timeline-body" ref={timelineBodyRef}>
@@ -126,9 +141,13 @@ export default function Timeline({
             <TrackHeader
               key={track.id}
               track={track}
+              isSelected={track.id === selectedTrackId}
+              onSelectTrack={onSelectTrack}
               onToggleLock={onToggleTrackLock}
               onToggleVisible={onToggleTrackVisible}
+              onToggleMute={onToggleTrackMute}
               onSetVolume={onSetTrackVolume}
+              onBeginEdit={onBeginEdit}
             />
           ))}
         </div>
@@ -167,10 +186,15 @@ export default function Timeline({
               trackIndex={index}
               clips={clips}
               selectedClipId={selectedClipId}
+              isSelected={track.id === selectedTrackId}
+              onSelectTrack={onSelectTrack}
               pixelsPerSecond={zoom}
               onSelectClip={onSelectClip}
+              onClipMenu={onClipMenu}
               onMoveClip={onMoveClip}
               onMoveClipTrack={onMoveClipTrack}
+              onTrimClip={onTrimClip}
+              onBeginEdit={onBeginEdit}
             />
           ))}
         </div>

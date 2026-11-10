@@ -2,6 +2,7 @@ from sqlalchemy import String, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
+# pyrefly: ignore[missing-import]
 from app.database import Base
 
 

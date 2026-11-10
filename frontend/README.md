@@ -15,7 +15,13 @@ Build a production bundle with `npm run build` and serve the generated `dist/` f
 
 - FFmpeg.wasm powers local trim, rotate, resize, audio trim, and MP4 timeline export.
 - Export layers visible video clips in track order, applies clip speed and visual transforms, and mixes audio from video and audio clips. Empty video intervals appear black.
-- Trim, rotate, resize, crop, speed changes, and merging are available locally through the inspector and timeline export. The backend's separate FFmpeg sample script contains experimental audio effects that are not currently editor features.
+- Drag a clip to move it or drag its left and right edges to trim it. Playback follows timeline positions and continues through gaps.
+- Every track accepts audio and video. Click a track before importing to place media on it at the playhead (or the next available space); click a clip to select it. Track visibility, mute, volume, and lock controls apply to that track.
+- The Media panel lists clips currently on the timeline. Search by name or click an item to select its clip.
+- Switch between the Media and Edit tabs in the left workspace. Select a clip for its editing tools, or right-click a clip for speed, mute, and video audio extraction; “More editing tools” opens the Edit tab. Focus a clip and press Shift+F10 to open its menu from the keyboard.
+- Undo and redo timeline edits with the toolbar or Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y also redoes). History keeps up to 100 actions while the page remains open.
+- Trim, rotate, resize, crop, speed changes, and merging are available locally through the inspector and timeline export.
+- Extract audio from a video to an audio track, mute video audio, download an audio clip as MP3, and apply volume, fade, normalization, denoise, equalizer, echo, reverse, and mono effects to a selected audio range. Speed and trim controls also apply to audio clips.
 - WebGPU is an optional preview renderer. The editor falls back to the browser video renderer when WebGPU is unavailable or fails.
 - FFmpeg.wasm loads on the first edit or export. Its core is about 32 MB before transfer compression, so the first operation takes longer.
 - Video is processed on the user's device. Large clips can be slow or exceed browser memory; FFmpeg.wasm documents a 2 GB input limit.

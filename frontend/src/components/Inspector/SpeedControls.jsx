@@ -1,6 +1,6 @@
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2];
 
-export default function SpeedControls({ selectedClip, onUpdateClip, onSeek }) {
+export default function SpeedControls({ selectedClip, onUpdateClip, onSeek, onBeginEdit }) {
   if (!selectedClip) {
     return <p className="muted-note">Select a clip to change its speed.</p>;
   }
@@ -49,6 +49,7 @@ export default function SpeedControls({ selectedClip, onUpdateClip, onSeek }) {
         <span>Speed: {speed}x</span>
         <input
           type="range"
+          onMouseDown={onBeginEdit}
           min="0.25"
           max="2"
           step="0.25"

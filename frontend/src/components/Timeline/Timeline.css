@@ -467,3 +467,21 @@
     transparent 6px
   );
 }
+.track-header-selected {
+  background-color: rgba(92, 141, 255, 0.18);
+  box-shadow: inset 3px 0 #5c8dff;
+}
+
+.track-lane.track-lane-selected {
+  background: #17243b;
+}
+
+.track-lane-mixed .timeline-clip.video-clip {
+  top: 3px;
+  bottom: 26px;
+}
+
+.track-lane-mixed .timeline-clip.audio-clip {
+  top: 26px;
+  bottom: 3px;
+}

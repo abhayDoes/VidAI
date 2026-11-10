@@ -4,12 +4,15 @@ import VideoPlayer from "./components/Player/VideoPlayer";
 import Controls from "./components/Player/Controls";
 import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
+import ClipMenu from "./components/Timeline/ClipMenu";
+import MediaPanel from "./components/MediaPanel/MediaPanel";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
 import { isAudioFile, loadAudioFile } from "./utils/audioUtils";
 import { downloadFile, exportTimeline, processClip } from "./services/ffmpeg";
 import "./App.css";
+import "./Studio.css";
 
 const DEFAULT_TRANSFORM = {
   rotation: 0,
@@ -22,11 +25,14 @@ export default function App() {
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
   const [status, setStatus] = useState("");
-  const [gpuPreviewEnabled, setGpuPreviewEnabled] = useState(true);
+  const [clipMenu, setClipMenu] = useState(null);
+  const [workspaceTab, setWorkspaceTab] = useState("media");
+  const closeClipMenu = useCallback(() => setClipMenu(null), []);
 
   const player = useVideoPlayer();
-  const { setVideoSource, setIsPlaying, setDuration } = player;
+  const { setVideoSource, setDuration, isPlaying, currentTime, setIsPlaying, seekTo } = player;
   const timeline = useTimeline({ videoDuration: player.duration });
+  const { undo, redo } = timeline;
 
   // Manage frontend-level background audio track playback in sync with playhead
   useAudioMixer({
@@ -51,6 +57,7 @@ export default function App() {
   const selectedClip = timeline.clips.find(
     (clip) => clip.id === timeline.selectedClipId
   );
+  const menuClip = timeline.clips.find((clip) => clip.id === clipMenu?.clipId);
   const visibleTrackIds = new Set(
     timeline.tracks.filter((track) => track.visible).map((track) => track.id)
   );
@@ -87,40 +94,29 @@ export default function App() {
 
   useEffect(() => {
     setVideoSource(activeClip?.file, activeClip?.sourceUrl);
-    if (!activeClip) setIsPlaying(false);
-  }, [activeClip, setIsPlaying, setVideoSource]);
+  }, [activeClip, setVideoSource]);
 
-  const handleFileChange = async (event) => {
+  useEffect(() => {
+    if (isPlaying && timelineEnd > 0 && currentTime >= timelineEnd) {
+      setIsPlaying(false);
+      seekTo(timelineEnd);
+    }
+  }, [isPlaying, currentTime, setIsPlaying, seekTo, timelineEnd]);
+
+
+    const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length) return;
 
-    // Dedicated target video track & starting position calculation
-    const videoTracks = timeline.tracks.filter((t) => t.type !== "audio");
-    const primaryVideoTrack =
-      videoTracks.find((t) => t.id === 1) ||
-      videoTracks[videoTracks.length - 1] ||
-      videoTracks[0];
-    const targetVideoTrackId = primaryVideoTrack ? primaryVideoTrack.id : 1;
-
-    const existingVideoClips = timeline.clips.filter(
-      (c) => c.trackId === targetVideoTrackId && c.type !== "audio"
-    );
-    let nextVideoStart = existingVideoClips.reduce(
-      (end, c) => Math.max(end, c.start + c.duration),
-      0
-    );
-
-    // Dedicated target audio track & starting position calculation
-    const audioTrack =
-      timeline.tracks.find((t) => t.type === "audio") ||
-      timeline.tracks[timeline.tracks.length - 1];
-    const audioTrackId = audioTrack ? audioTrack.id : 101;
-    const existingAudioClips = timeline.clips.filter((c) => c.trackId === audioTrackId);
-    let nextAudioStart = existingAudioClips.reduce(
-      (end, c) => Math.max(end, c.start + c.duration),
-      0
-    );
+    const targetTrack = timeline.tracks.find((track) => track.id === timeline.selectedTrackId);
+    if (!targetTrack || targetTrack.locked) {
+      setStatus("Select an unlocked track before importing media");
+      return;
+    }
+    let nextStart = player.currentTime;
+    const occupied = timeline.clips.filter((clip) => clip.trackId === targetTrack.id)
+      .map((clip) => ({ start: clip.start, end: clip.start + clip.duration }));
 
     const importedClips = [];
 
@@ -128,17 +124,12 @@ export default function App() {
       try {
         const isAudio = isAudioFile(file);
         let media;
-        let trackId = targetVideoTrackId;
-        let clipStart = 0;
+        const trackId = targetTrack.id;
 
         if (isAudio) {
           media = await loadAudioFile(file);
-          trackId = audioTrackId;
-          clipStart = nextAudioStart;
         } else {
           media = await player.loadVideo(file);
-          trackId = targetVideoTrackId;
-          clipStart = nextVideoStart;
         }
 
         if (!media) continue;
@@ -147,6 +138,11 @@ export default function App() {
           Number.isFinite(media.duration) && media.duration > 0
             ? media.duration
             : 30;
+
+        let clipStart = nextStart;
+        for (const range of [...occupied].sort((a, b) => a.start - b.start)) {
+          if (clipStart < range.end && clipStart + safeDuration > range.start) clipStart = range.end;
+        }
 
         const clip = {
           id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
@@ -170,11 +166,8 @@ export default function App() {
         timeline.addClip(clip);
         importedClips.push(clip);
 
-        if (isAudio) {
-          nextAudioStart += safeDuration;
-        } else {
-          nextVideoStart += safeDuration;
-        }
+        nextStart = clipStart + safeDuration;
+        occupied.push({ start: clipStart, end: nextStart });
       } catch (error) {
         console.error(error);
         setStatus(`Could not read ${file.name}`);
@@ -191,7 +184,7 @@ export default function App() {
         firstClip.speed || 1
       );
       setStatus(
-        `Added ${importedClips.length} track item${importedClips.length === 1 ? "" : "s"} to the timeline`
+        `Added ${importedClips.length} item${importedClips.length === 1 ? "" : "s"} to ${targetTrack.name}`
       );
     }
   };
@@ -243,8 +236,14 @@ export default function App() {
       const result = await processClip(selectedClip.file, operation, options, (progress) => {
         setStatus(`${operation[0].toUpperCase()}${operation.slice(1)} locally: ${Math.round(progress * 100)}%`);
       });
+      if (operation === "audio-export") {
+        downloadFile(result.file, "vidai-audio.mp3");
+        URL.revokeObjectURL(result.url);
+        setStatus("Audio export complete — your MP3 download has started");
+        return;
+      }
       const metadata = await new Promise((resolve, reject) => {
-        const media = document.createElement(selectedClip.type === "audio" ? "audio" : "video");
+        const media = document.createElement(selectedClip.type === "audio" || operation === "extract-audio" ? "audio" : "video");
         media.preload = "metadata";
         media.onloadedmetadata = () => {
           resolve({ duration: media.duration, width: media.videoWidth, height: media.videoHeight });
@@ -255,7 +254,21 @@ export default function App() {
         media.src = result.url;
       });
       const current = timeline.clips.find((clip) => clip.id === selectedClip.id);
-      if (!current) return;
+      if (!current) { URL.revokeObjectURL(result.url); return; }
+      if (operation === "extract-audio") {
+        const audioTrack = timeline.tracks.find((track) => !track.locked && track.id !== current.trackId);
+        if (!audioTrack) { URL.revokeObjectURL(result.url); throw new Error("Add or unlock another track to extract audio."); }
+        timeline.startHistoryGroup();
+        timeline.updateClip(current.id, { muted: true });
+        timeline.addClip({ ...current, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: "audio", trackId: audioTrack.id, file: result.file, sourceUrl: result.url,
+          filename: result.file.name, title: result.file.name, sourceStart: 0, sourceMin: 0,
+          sourceMax: metadata.duration, duration: Math.min(current.duration, metadata.duration / (current.speed || 1)),
+          muted: false, volume: 1 });
+        timeline.endHistoryGroup();
+        setStatus("Audio extracted to the timeline; video audio muted");
+        return;
+      }
       const patch = {
         file: result.file,
         sourceUrl: result.url,
@@ -264,7 +277,7 @@ export default function App() {
         width: metadata.width,
         height: metadata.height,
       };
-      if (operation === "trim") {
+      if (operation === "trim" || operation === "audio-effect") {
         patch.sourceStart = 0;
         patch.sourceMin = 0;
         patch.sourceMax = metadata.duration;
@@ -296,6 +309,25 @@ export default function App() {
     }
   };
 
+  const handleClipMenu = (clipId, x, y) => {
+    timeline.selectClip(clipId);
+    setClipMenu({ clipId, x, y });
+  };
+
+  const handleMenuSpeed = (speed) => {
+    if (!menuClip || speed === (menuClip.speed || 1)) return;
+    const sourceLength = menuClip.duration * (menuClip.speed || 1);
+    timeline.updateClip(menuClip.id, { speed, duration: sourceLength / speed });
+    player.seekTo(menuClip.start, menuClip.start, menuClip.sourceStart || 0, speed);
+  };
+
+  useEffect(() => {
+    if (workspaceTab !== "edit" || clipMenu) return undefined;
+    const onKeyDown = (event) => { if (event.key === "Escape") setWorkspaceTab("media"); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [workspaceTab, clipMenu]);
+
   const handleMoveClip = (clipId, desiredStart) => {
     const clip = timeline.clips.find((item) => item.id === clipId);
     if (!clip) return;
@@ -306,43 +338,12 @@ export default function App() {
     }
   };
 
-  const handleTimeUpdate = () => {
-    if (!activeClip || player.isScrubbing()) return;
-
-    const activeSpeed = activeClip.speed || 1;
-    const sourceStart = activeClip.sourceStart || 0;
-    const sourceTime = player.videoRef.current?.currentTime;
-    if (!Number.isFinite(sourceTime)) return;
-
-    const timelineTime =
-      activeClip.start + (sourceTime - sourceStart) / activeSpeed;
-    const clipEnd = activeClip.start + activeClip.duration;
-    // Hand off just before the exact end: timeupdate events only fire a few
-    // times per second, so waiting for the precise boundary overshoots it.
-    if (player.isPlaying && timelineTime >= clipEnd - 1 / 30) {
-      const nextClip = timeline.clips
-        .filter(
-          (clip) =>
-            visibleTrackIds.has(clip.trackId) &&
-            clip.start >= clipEnd - 0.05
-        )
-        .sort((a, b) => a.start - b.start)[0];
-
-      if (nextClip) {
-        player.seekTo(
-          nextClip.start,
-          nextClip.start,
-          nextClip.sourceStart || 0,
-          nextClip.speed || 1
-        );
-      } else {
-        player.seekTo(clipEnd);
-        player.setIsPlaying(false);
-      }
-      return;
+  const handleSeek = (time) => {
+    if (activeClip && time >= activeClip.start && time < activeClip.start + activeClip.duration) {
+      player.seekTo(time, activeClip.start, activeClip.sourceStart || 0, activeClip.speed || 1);
+    } else {
+      player.seekTo(time);
     }
-
-    player.handleTimeUpdate(activeClip.start, sourceStart, activeSpeed);
   };
 
   const handleTogglePlay = useCallback(() => {
@@ -352,22 +353,11 @@ export default function App() {
       return;
     }
 
-    if (activeClip) {
-      player.setIsPlaying(true);
-      player.videoRef.current?.play().catch(() => {});
-      return;
-    }
-
-    // If playhead is over an audio clip or within timeline, start playing
-    if (player.currentTime < timelineDuration) {
-      player.setIsPlaying(true);
-      return;
-    }
-
-    // At the end of timeline, wrap to 0 and play
-    player.seekTo(0);
+    if (!timelineEnd) return;
+    if (player.currentTime >= timelineEnd - 0.001) player.seekTo(0);
     player.setIsPlaying(true);
-  }, [player, activeClip, timelineDuration]);
+    player.videoRef.current?.play().catch(() => {});
+  }, [player, timelineEnd]);
 
   // Spacebar to play/pause anywhere in the editor
   useEffect(() => {
@@ -385,36 +375,29 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleTogglePlay]);
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+      } else if (key === "y" && !event.shiftKey) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
+
   const handleStop = useCallback(() => {
     player.setIsPlaying(false);
     player.videoRef.current?.pause();
     player.seekTo(0);
   }, [player]);
-
-  const handleVideoEnded = () => {
-    if (!activeClip) {
-      player.setIsPlaying(false);
-      return;
-    }
-    const nextClip = timeline.clips
-      .filter(
-        (clip) =>
-          visibleTrackIds.has(clip.trackId) &&
-          clip.start >= activeClip.start + activeClip.duration
-      )
-      .sort((a, b) => a.start - b.start)[0];
-
-    if (nextClip) {
-      player.seekTo(
-        nextClip.start,
-        nextClip.start,
-        nextClip.sourceStart || 0,
-        nextClip.speed || 1
-      );
-    } else {
-      player.setIsPlaying(false);
-    }
-  };
 
   const handleSplitClip = () =>
     timeline.splitClip(timeline.selectedClipId, player.currentTime);
@@ -450,13 +433,12 @@ export default function App() {
     <div className="editor-container">
       <Header
         status={status}
+        clipCount={timeline.clips.length}
         hasVideo={timeline.clips.some((c) => c.type !== "audio")}
         hasAudio={timeline.clips.some((c) => c.type === "audio")}
         onImport={() => fileInputRef.current?.click()}
         onImportAudio={() => audioInputRef.current?.click()}
         onExport={handleExport}
-        gpuPreviewEnabled={gpuPreviewEnabled}
-        onToggleGpuPreview={() => setGpuPreviewEnabled((enabled) => !enabled)}
       />
 
       <input
@@ -477,6 +459,33 @@ export default function App() {
         onChange={handleFileChange}
       />
 
+      <div className="studio-body">
+        <aside className="workspace-panel" aria-label="Workspace">
+          <div className="workspace-tabs" role="tablist" aria-label="Workspace panels">
+            <button type="button" role="tab" id="workspace-media-tab" aria-selected={workspaceTab === "media"} aria-controls="workspace-media" onClick={() => setWorkspaceTab("media")}>Media</button>
+            <button type="button" role="tab" id="workspace-edit-tab" aria-selected={workspaceTab === "edit"} aria-controls="workspace-edit" onClick={() => setWorkspaceTab("edit")}>Edit</button>
+          </div>
+          <div className="workspace-media" role="tabpanel" id="workspace-media" aria-labelledby="workspace-media-tab" hidden={workspaceTab !== "media"}>
+            <MediaPanel clips={timeline.clips} selectedClipId={timeline.selectedClipId}
+              onImport={() => fileInputRef.current?.click()} onSelectClip={handleSelectClip} />
+          </div>
+          <div className="workspace-edit" role="tabpanel" id="workspace-edit" aria-labelledby="workspace-edit-tab" hidden={workspaceTab !== "edit"}>
+            {selectedClip ? (
+              <Inspector
+                videoFile={selectedClip.file}
+                selectedClip={selectedClip}
+                selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
+                transform={selectedTransform}
+                onTransformChange={(next) => timeline.updateClip(selectedClip.id, next)}
+                onProcessClip={handleProcessClip}
+                onUpdateClip={timeline.updateClip}
+                onBeginEdit={timeline.beginHistoryGroup}
+                onSeekClip={(...args) => player.seekTo(...args)}
+              />
+            ) : <div className="workspace-edit-empty"><strong>Select a clip to edit</strong><p>Click a video or audio clip on the timeline to see its tools here.</p></div>}
+          </div>
+        </aside>
+        <div className="studio-main">
       <div className="workspace-row">
         <div className="player-pane">
           <VideoPlayer
@@ -492,12 +501,14 @@ export default function App() {
             flipH={activeTransform.flipH}
             flipV={activeTransform.flipV}
             aspectRatio={activeTransform.aspectRatio}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleVideoEnded}
+            hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
-            gpuPreviewEnabled={gpuPreviewEnabled}
+            gpuPreviewEnabled={true}
             onGpuStatus={setStatus}
+            muted={activeClip?.muted || false}
+            trackMuted={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.muted || false}
+            trackVolume={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.volume ?? 1}
           />
           <Controls
             isPlaying={player.isPlaying}
@@ -505,21 +516,10 @@ export default function App() {
             duration={timelineDuration}
             onTogglePlay={handleTogglePlay}
             onStop={handleStop}
-            onSeek={player.seekTo}
+            onSeek={handleSeek}
           />
         </div>
 
-        <Inspector
-          videoFile={selectedClip?.file}
-          selectedClip={selectedClip}
-          transform={selectedTransform}
-          onTransformChange={(next) =>
-            selectedClip && timeline.updateClip(selectedClip.id, next)
-          }
-          onProcessClip={handleProcessClip}
-          onUpdateClip={timeline.updateClip}
-          onSeekClip={(...args) => player.seekTo(...args)}
-        />
       </div>
 
       <Timeline
@@ -527,15 +527,24 @@ export default function App() {
         clips={timeline.clips}
         markers={timeline.markers}
         selectedClipId={timeline.selectedClipId}
+        selectedTrackId={timeline.selectedTrackId}
         isSnapping={timeline.isSnapping}
         currentTime={player.currentTime}
         duration={timelineDuration}
-        onSeek={player.seekTo}
+        onSeek={handleSeek}
         onSetScrubbing={player.setScrubbing}
         onSnapTime={timeline.snapTime}
         onSelectClip={handleSelectClip}
+        onClipMenu={handleClipMenu}
+        onSelectTrack={timeline.selectTrack}
         onMoveClip={handleMoveClip}
         onMoveClipTrack={timeline.moveClipToTrack}
+        onTrimClip={timeline.updateClip}
+        onBeginEdit={timeline.beginHistoryGroup}
+        onUndo={timeline.undo}
+        onRedo={timeline.redo}
+        canUndo={timeline.canUndo}
+        canRedo={timeline.canRedo}
         onAddTrack={timeline.addTrack}
         onToggleSnap={() => timeline.setIsSnapping(!timeline.isSnapping)}
         onSplitClip={handleSplitClip}
@@ -543,8 +552,23 @@ export default function App() {
         onAddMarker={() => timeline.addMarker(player.currentTime)}
         onToggleTrackLock={timeline.toggleTrackLock}
         onToggleTrackVisible={timeline.toggleTrackVisible}
+        onToggleTrackMute={timeline.toggleTrackMute}
         onSetTrackVolume={timeline.setTrackVolume}
       />
+        </div>
+      </div>
+      {clipMenu && menuClip && (
+        <ClipMenu clip={menuClip} position={clipMenu}
+          locked={timeline.tracks.find((track) => track.id === menuClip.trackId)?.locked}
+          onClose={closeClipMenu}
+          onSpeed={handleMenuSpeed}
+          onMute={() => timeline.updateClip(menuClip.id, { muted: !menuClip.muted })}
+          onExtract={() => {
+            closeClipMenu();
+            handleProcessClip("extract-audio", { start: menuClip.sourceStart || 0, duration: menuClip.duration * (menuClip.speed || 1) });
+          }}
+          onMore={() => { closeClipMenu(); setWorkspaceTab("edit"); }} />
+      )}
     </div>
   );
 }

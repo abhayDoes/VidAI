@@ -82,6 +82,13 @@
   color: #8b949e;
 }
 
+.empty-preview-gap, .empty-preview-gap:hover {
+  cursor: default;
+  border-color: transparent;
+  color: #8b949e;
+  background: #000;
+}
+
 .import-prompt {
   font-size: 13px;
   letter-spacing: 0.2px;

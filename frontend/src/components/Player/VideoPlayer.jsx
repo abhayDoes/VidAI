@@ -26,11 +26,19 @@ export default function VideoPlayer({
   onImportClick,
   gpuPreviewEnabled = false,
   onGpuStatus,
+  muted = false,
+  trackMuted = false,
+  trackVolume = 1,
+  hasClips = false,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
   const canvasRef = useRef(null);
   const gpuReady = useWebGpuPreview(videoRef, canvasRef, videoUrl, gpuPreviewEnabled, onGpuStatus);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = Math.max(0, Math.min(1, trackVolume));
+  }, [videoRef, videoUrl, trackVolume]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -93,6 +101,7 @@ export default function VideoPlayer({
             key={videoUrl}
             ref={videoRef}
             src={videoUrl}
+            muted={muted || trackMuted}
             className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
             style={transformStyle}
             onTimeUpdate={onTimeUpdate}
@@ -118,10 +127,8 @@ export default function VideoPlayer({
           />
         </div>
       ) : (
-        <div className="empty-preview" onClick={onImportClick}>
-          <span className="import-prompt">
-            Click to import videos or move the playhead over a clip
-          </span>
+        <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>
+          <div className="preview-empty-content"><span className="preview-empty-icon" aria-hidden="true">▶</span><strong>{hasClips ? "No video at the playhead" : "Your canvas is ready"}</strong><span className="import-prompt">{hasClips ? "Move the playhead over a video clip to preview it." : "Import media to start creating your video."}</span></div>
         </div>
       )}
     </main>

@@ -11,6 +11,9 @@ export default function Clip({
   onSelect,
   onMove,
   onMoveTrack,
+  onTrim,
+  onBeginEdit,
+  onClipMenu,
 }) {
   const dragRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -25,8 +28,26 @@ export default function Clip({
 
     const handleMouseMove = (event) => {
       if (!dragRef.current) return;
+      if (event.buttons === 0) {
+        dragRef.current = null;
+        setIsDragging(false);
+        return;
+      }
       // Horizontal: move along the timeline.
       const delta = (event.clientX - dragRef.current.pointerX) / pixelsPerSecond;
+      if (dragRef.current.trim) {
+        const initial = dragRef.current;
+        const speed = initial.speed;
+        if (initial.trim === "left") {
+          const minDelta = Math.max(-initial.start, (initial.sourceMin - initial.sourceStart) / speed);
+          const adjusted = Math.max(minDelta, Math.min(initial.duration - 0.1, delta));
+          onTrim(clip.id, { start: initial.start + adjusted, sourceStart: initial.sourceStart + adjusted * speed, duration: initial.duration - adjusted });
+        } else {
+          const maxDuration = (initial.sourceMax - initial.sourceStart) / speed;
+          onTrim(clip.id, { duration: Math.max(0.1, Math.min(maxDuration, initial.duration + delta)) });
+        }
+        return;
+      }
       onMove(clip.id, Math.max(0, dragRef.current.start + delta));
 
       // Vertical: hop between track lanes.
@@ -62,6 +83,7 @@ export default function Clip({
     isDragging,
     onMove,
     onMoveTrack,
+    onTrim,
     pixelsPerSecond,
     trackIds,
   ]);
@@ -70,6 +92,7 @@ export default function Clip({
     event.stopPropagation();
     if (locked || event.button !== 0) return;
     event.preventDefault();
+    onBeginEdit();
     onSelect(clip.id);
     dragRef.current = {
       pointerX: event.clientX,
@@ -80,8 +103,26 @@ export default function Clip({
     setIsDragging(true);
   };
 
+  const handleTrimStart = (event, trim) => {
+    event.stopPropagation();
+    if (locked || event.button !== 0) return;
+    event.preventDefault();
+    onBeginEdit();
+    onSelect(clip.id);
+    dragRef.current = {
+      trim, pointerX: event.clientX, start: clip.start, duration: clip.duration,
+      sourceStart: clip.sourceStart || 0, sourceMin: clip.sourceMin || 0,
+      sourceMax: clip.sourceMax ?? ((clip.sourceStart || 0) + clip.duration * speed), speed,
+    };
+    setIsDragging(true);
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${clip.type === "audio" ? "Audio" : "Video"} clip: ${clip.title}`}
+      aria-pressed={isSelected}
       className={`timeline-clip ${isSelected ? "selected" : ""} ${
         clip.type === "audio" ? "audio-clip" : "video-clip"
       }`}
@@ -92,12 +133,29 @@ export default function Clip({
         cursor: locked ? "not-allowed" : isDragging ? "grabbing" : "grab",
       }}
       onMouseDown={handleMouseDown}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClipMenu(clip.id, event.clientX, event.clientY);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onClipMenu(clip.id, rect.left, rect.bottom);
+        } else if (!locked && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(clip.id);
+        }
+      }}
       onClick={(e) => {
         e.stopPropagation();
         if (!locked) onSelect(clip.id);
       }}
     >
-      <div className="clip-handle left" />
+      <div className="clip-handle left" onMouseDown={(event) => handleTrimStart(event, "left")} />
       <div className="clip-content-wrap">
         <span className="clip-type-icon">
           {clip.type === "audio" ? "🎵" : "🎬"}
@@ -106,7 +164,7 @@ export default function Clip({
       </div>
       {clip.type === "audio" && <div className="audio-waveform-bars" />}
       {speed !== 1 && <span className="clip-speed">{speed}x</span>}
-      <div className="clip-handle right" />
+      <div className="clip-handle right" onMouseDown={(event) => handleTrimStart(event, "right")} />
     </div>
   );
 }
