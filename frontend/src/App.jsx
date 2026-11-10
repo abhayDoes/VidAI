@@ -501,6 +501,7 @@ export default function App() {
             flipH={activeTransform.flipH}
             flipV={activeTransform.flipV}
             aspectRatio={activeTransform.aspectRatio}
+            zoom={activeClip?.zoom ?? 1}
             hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
@@ -517,6 +518,11 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             onStop={handleStop}
             onSeek={handleSeek}
+            zoom={activeClip?.zoom ?? 1}
+            canZoom={activeClip?.type !== "audio" && Boolean(activeClip)}
+            onZoomChange={(zoom) => activeClip && timeline.updateClip(activeClip.id, { zoom })}
+            onBeginZoomEdit={timeline.beginHistoryGroup}
+            onEndZoomEdit={timeline.endHistoryGroup}
           />
         </div>
 

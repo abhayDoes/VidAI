@@ -20,6 +20,7 @@ export default function VideoPlayer({
   flipH,
   flipV,
   aspectRatio,
+  zoom = 1,
   onTimeUpdate,
   onEnded,
   onTogglePlay,
@@ -90,7 +91,7 @@ export default function VideoPlayer({
   const transformStyle = {
     transform: `rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${
       flipV ? -1 : 1
-    })`,
+    }) scale(${zoom})`,
   };
 
   return (

@@ -227,9 +227,20 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     visualFilters.push(
       `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
       `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-      "setsar=1",
-      "fps=30",
     );
+    const zoom = Math.max(0.5, Math.min(2, Number(clip.zoom) || 1));
+    if (zoom > 1) {
+      visualFilters.push(
+        `scale=trunc(iw*${zoom}/2)*2:trunc(ih*${zoom}/2)*2`,
+        `crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2`,
+      );
+    } else if (zoom < 1) {
+      visualFilters.push(
+        `scale=trunc(iw*${zoom}/2)*2:trunc(ih*${zoom}/2)*2`,
+        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+      );
+    }
+    visualFilters.push("setsar=1", "fps=30");
     visualFilters.push("format=yuv420p");
     graph.push(`[${index}:v]${visualFilters.join(",")}[v${index}]`);
 
