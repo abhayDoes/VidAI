@@ -21,7 +21,11 @@
   border: 1px solid #21262d;
   border-radius: 4px;
   overflow: hidden;
+  cursor: grab;
+  touch-action: none;
 }
+
+.player-frame:active { cursor: grabbing; }
 
 .player-frame.aspect-16-9 {
   aspect-ratio: 16 / 9;
@@ -39,11 +43,13 @@
 }
 
 .video-screen {
+  position: absolute;
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000000;
   transition: transform 0.15s ease;
+  cursor: grab;
 }
 
 .gpu-preview-canvas {
@@ -69,8 +75,10 @@
   position: absolute;
   z-index: 2;
   object-fit: contain;
-  pointer-events: none;
+  pointer-events: auto;
   user-select: none;
+  cursor: grab;
+  touch-action: none;
 }
 
 .empty-preview {

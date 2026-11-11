@@ -599,12 +599,18 @@ export default function App() {
             flipV={activeTransform.flipV}
             aspectRatio={activeTransform.aspectRatio}
             zoom={activeClip?.zoom ?? 1}
+            positionX={activeClip?.positionX ?? 50}
+            positionY={activeClip?.positionY ?? 50}
             imageOverlays={activeImageClips}
             hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
             gpuPreviewEnabled={true}
             onGpuStatus={setStatus}
+            onUpdateClip={timeline.updateClip}
+            onSelectClip={timeline.selectClip}
+            onBeginCanvasEdit={timeline.beginHistoryGroup}
+            onEndCanvasEdit={timeline.endHistoryGroup}
             muted={activeClip?.muted || false}
             trackMuted={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.muted || false}
             trackVolume={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.volume ?? 1}
@@ -619,6 +625,7 @@ export default function App() {
             zoom={activeClip?.zoom ?? 1}
             canZoom={activeClip?.type !== "audio" && Boolean(activeClip)}
             onZoomChange={(zoom) => activeClip && timeline.updateClip(activeClip.id, { zoom })}
+            onZoomFit={() => activeClip && timeline.updateClip(activeClip.id, { zoom: 1, positionX: 50, positionY: 50 })}
             onBeginZoomEdit={timeline.beginHistoryGroup}
             onEndZoomEdit={timeline.endHistoryGroup}
           />

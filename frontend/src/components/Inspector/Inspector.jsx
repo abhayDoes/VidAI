@@ -95,8 +95,8 @@ export default function Inspector({
       {selectedClip?.type === "image" && <div className="inspector-section image-overlay-tools">
         <div className="section-title">Image Overlay</div>
         <label className="slider-label">
-          <span>Size: {Math.round(selectedClip.overlayScale ?? 25)}%</span>
-          <input type="range" min="5" max="100" step="1" value={selectedClip.overlayScale ?? 25}
+          <span>Size / zoom: {Math.round(selectedClip.overlayScale ?? 25)}%</span>
+          <input type="range" min="5" max="400" step="1" value={selectedClip.overlayScale ?? 25}
             onMouseDown={onBeginEdit}
             onChange={(event) => onUpdateClip(selectedClip.id, { overlayScale: Number(event.target.value) })} />
         </label>

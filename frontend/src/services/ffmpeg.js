@@ -243,7 +243,7 @@ async function exportTimelineInternal(clips, tracks = [], onProgress, options = 
     if (clip.flipH) visualFilters.push("hflip");
     if (clip.flipV) visualFilters.push("vflip");
     if (clip.type === "image") {
-      const imageScale = Math.max(0.05, Math.min(1, Number(clip.overlayScale) / 100 || 0.25));
+      const imageScale = Math.max(0.05, Math.min(4, Number(clip.overlayScale) / 100 || 0.25));
       const imageWidth = evenDimension(width * imageScale, 2);
       const imageHeight = evenDimension(height * imageScale, 2);
       visualFilters.push(
@@ -253,23 +253,15 @@ async function exportTimelineInternal(clips, tracks = [], onProgress, options = 
         "fps=30",
       );
     } else {
+      const zoom = Math.max(0.25, Math.min(4, Number(clip.zoom) || 1));
+      const scaledWidth = evenDimension(width * zoom, width);
+      const scaledHeight = evenDimension(height * zoom, height);
       visualFilters.push(
-        `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+        `scale=${scaledWidth}:${scaledHeight}:force_original_aspect_ratio=decrease`,
+        "setsar=1",
+        "fps=30",
+        "format=yuv420p",
       );
-      const zoom = Math.max(0.5, Math.min(2, Number(clip.zoom) || 1));
-      if (zoom > 1) {
-        visualFilters.push(
-          `scale=trunc(iw*${zoom}/2)*2:trunc(ih*${zoom}/2)*2`,
-          `crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2`,
-        );
-      } else if (zoom < 1) {
-        visualFilters.push(
-          `scale=trunc(iw*${zoom}/2)*2:trunc(ih*${zoom}/2)*2`,
-          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
-        );
-      }
-      visualFilters.push("setsar=1", "fps=30", "format=yuv420p");
     }
     graph.push(`[${index}:v]${visualFilters.join(",")}[v${index}]`);
 
@@ -302,14 +294,13 @@ async function exportTimelineInternal(clips, tracks = [], onProgress, options = 
   visualLayers.forEach(({ index, type, clip }, layer) => {
     const next = layer === visualLayers.length - 1 ? "outv" : `layer${layer}`;
     if (type === "image") {
-      const imageScale = Math.max(0.05, Math.min(1, Number(clip.overlayScale) / 100 || 0.25));
-      const imageWidth = evenDimension(width * imageScale, 2);
-      const imageHeight = evenDimension(height * imageScale, 2);
-      const x = Math.round(width * (Number(clip.overlayX ?? 50) / 100) - imageWidth / 2);
-      const y = Math.round(height * (Number(clip.overlayY ?? 50) / 100) - imageHeight / 2);
-      graph.push(`[${base}][v${index}]overlay=${x}:${y}:eof_action=pass:repeatlast=0[${next}]`);
+      const x = Math.max(0, Math.min(100, Number(clip.overlayX ?? 50))) / 100;
+      const y = Math.max(0, Math.min(100, Number(clip.overlayY ?? 50))) / 100;
+      graph.push(`[${base}][v${index}]overlay=x='main_w*${x}-overlay_w/2':y='main_h*${y}-overlay_h/2':eof_action=pass:repeatlast=0[${next}]`);
     } else {
-      graph.push(`[${base}][v${index}]overlay=eof_action=pass:repeatlast=0[${next}]`);
+      const x = Math.max(0, Math.min(100, Number(clip.positionX ?? 50))) / 100;
+      const y = Math.max(0, Math.min(100, Number(clip.positionY ?? 50))) / 100;
+      graph.push(`[${base}][v${index}]overlay=x='main_w*${x}-overlay_w/2':y='main_h*${y}-overlay_h/2':eof_action=pass:repeatlast=0[${next}]`);
     }
     base = next;
   });

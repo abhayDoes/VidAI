@@ -23,6 +23,7 @@ export default function Controls({
   onZoomChange,
   onBeginZoomEdit,
   onEndZoomEdit,
+  onZoomFit,
 }) {
   return (
     <div className="playback-bar">
@@ -73,16 +74,16 @@ export default function Controls({
       <div className="preview-zoom-controls" aria-label="Video preview zoom">
         <button
           className="control-btn zoom-step-btn"
-          onClick={() => onZoomChange?.(Math.max(0.5, Math.round((zoom - 0.1) * 100) / 100))}
-          disabled={!canZoom || zoom <= 0.5}
+          onClick={() => onZoomChange?.(Math.max(0.25, Math.round((zoom - 0.1) * 100) / 100))}
+          disabled={!canZoom || zoom <= 0.25}
           title="Zoom out"
           aria-label="Zoom out"
         >−</button>
         <input
           aria-label="Video zoom"
           type="range"
-          min="0.5"
-          max="2"
+          min="0.25"
+          max="4"
           step="0.05"
           value={zoom}
           disabled={!canZoom}
@@ -92,15 +93,15 @@ export default function Controls({
         />
         <button
           className="control-btn zoom-step-btn"
-          onClick={() => onZoomChange?.(Math.min(2, Math.round((zoom + 0.1) * 100) / 100))}
-          disabled={!canZoom || zoom >= 2}
+          onClick={() => onZoomChange?.(Math.min(4, Math.round((zoom + 0.1) * 100) / 100))}
+          disabled={!canZoom || zoom >= 4}
           title="Zoom in"
           aria-label="Zoom in"
         >+</button>
         <button
           className="control-btn zoom-fit-btn"
-          onClick={() => onZoomChange?.(1)}
-          disabled={!canZoom || zoom === 1}
+          onClick={onZoomFit || (() => onZoomChange?.(1))}
+          disabled={!canZoom}
           title="Fit video to player"
         >Fit</button>
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
