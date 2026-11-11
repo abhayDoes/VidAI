@@ -6,6 +6,7 @@ import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
 import ClipMenu from "./components/Timeline/ClipMenu";
 import MediaPanel from "./components/MediaPanel/MediaPanel";
+import ExportDialog from "./components/ExportDialog";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
@@ -28,6 +29,9 @@ export default function App() {
   const audioInputRef = useRef(null);
   const projectInputRef = useRef(null);
   const [status, setStatus] = useState("");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [clipMenu, setClipMenu] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState("media");
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
@@ -209,28 +213,57 @@ export default function App() {
     }
   };
 
-  const handleExport = async () => {
-    if (!visibleClips.length) {
-      fileInputRef.current?.click();
-      return;
+  const handleExport = () => {
+    setExportProgress(0);
+    setExportDialogOpen(true);
+  };
+
+  const handleRunExport = async ({ filename, resolution }) => {
+    const baseName = filename.trim()
+      .replace(/\.mp4$/i, "")
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+      .replace(/[. ]+$/g, "") || "vidai-export";
+    const outputName = `${baseName}.mp4`;
+    let destinationHandle;
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        destinationHandle = await window.showSaveFilePicker({
+          suggestedName: outputName,
+          types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
+        });
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setStatus(error.message || "Could not choose an export location");
+        return;
+      }
     }
 
-    const videoClips = visibleClips.filter((c) => c.type === "video");
-    if (!videoClips.length) {
-      setStatus("Add a video clip before exporting");
-      return;
-    }
+    setIsExporting(true);
+    setExportProgress(0);
     setStatus("Preparing FFmpeg.wasm in your browser...");
+    let resultUrl;
     try {
       const result = await exportTimeline(visibleClips, timeline.tracks, (progress) => {
+        setExportProgress(progress);
         setStatus(`Rendering locally: ${Math.round(progress * 100)}%`);
-      });
-      downloadFile(result.file);
+      }, { resolution });
+      resultUrl = result.url;
+      if (destinationHandle) {
+        const writable = await destinationHandle.createWritable();
+        await writable.write(result.file);
+        await writable.close();
+      } else {
+        downloadFile(result.file, outputName);
+      }
       URL.revokeObjectURL(result.url);
-      setStatus("Export complete — your MP4 download has started");
+      setStatus(`Export complete — saved ${destinationHandle?.name || outputName}`);
+      setExportDialogOpen(false);
     } catch (error) {
       console.error(error);
       setStatus(error.message || "Local export failed");
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -640,6 +673,14 @@ export default function App() {
           }}
           onMore={() => { closeClipMenu(); setWorkspaceTab("edit"); }} />
       )}
+      <ExportDialog
+        open={exportDialogOpen}
+        canExport={visibleClips.some((clip) => clip.type === "video")}
+        exporting={isExporting}
+        progress={exportProgress}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleRunExport}
+      />
     </div>
   );
 }

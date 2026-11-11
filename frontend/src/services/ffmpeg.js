@@ -164,7 +164,7 @@ async function hasAudioStream(engine, input) {
   return exitCode === 0;
 }
 
-async function exportTimelineInternal(clips, tracks = [], onProgress) {
+async function exportTimelineInternal(clips, tracks = [], onProgress, options = {}) {
   const visualClips = clips
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
@@ -201,8 +201,21 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   let height = evenDimension(videos[0].height, 720);
   const ratios = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1 };
   const targetAspect = ratios[videos[0].aspectRatio] || width / height;
-  if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
-  else height = evenDimension(width / targetAspect, width);
+  const resolutionHeights = { "720": 720, "1080": 1080, "1440": 1440, "2160": 2160 };
+  const targetHeight = resolutionHeights[options.resolution];
+  if (targetHeight) {
+    if (targetAspect >= 1) {
+      height = targetHeight;
+      width = evenDimension(height * targetAspect, width);
+    } else {
+      width = targetHeight;
+      height = evenDimension(width / targetAspect, height);
+    }
+  } else if (width / height > targetAspect) {
+    width = evenDimension(height * targetAspect, height);
+  } else {
+    height = evenDimension(width / targetAspect, width);
+  }
   const graph = [];
   const endTime = Math.max(...[...visualClips, ...audio].map((clip) => Number(clip.start) + Number(clip.duration)));
   const visualLayers = [];
@@ -330,8 +343,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   }
 }
 
-export function exportTimeline(clips, tracks = [], onProgress) {
-  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress));
+export function exportTimeline(clips, tracks = [], onProgress, options = {}) {
+  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress, options));
 }
 
 export function downloadFile(file, filename = file.name) {
