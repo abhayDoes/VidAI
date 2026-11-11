@@ -2,12 +2,6 @@ import SpeedControls from "./SpeedControls";
 import Transform from "./Transform";
 import "./Inspector.css";
 
-const RESOLUTIONS = [
-  { label: "1920 x 1080 (1080p)", width: 1920, height: 1080 },
-  { label: "1280 x 720 (720p)", width: 1280, height: 720 },
-  { label: "1080 x 1920 (Vertical)", width: 1080, height: 1920 },
-  { label: "1080 x 1080 (Square)", width: 1080, height: 1080 },
-];
 const AUDIO_EFFECTS = [
   ["quieter", "Half Volume"], ["louder", "Double Volume"], ["mute", "Mute"],
   ["fade", "Fade In / Out"], ["normalize", "Normalize"], ["denoise", "Reduce Noise"],
@@ -15,7 +9,6 @@ const AUDIO_EFFECTS = [
 ];
 
 export default function Inspector({
-  videoFile,
   selectedClip,
   selectedTrack,
   transform,
@@ -25,8 +18,6 @@ export default function Inspector({
   onSeekClip,
   onProcessClip,
 }) {
-  const hasVideoFile = Boolean(selectedClip?.file || videoFile);
-
   return (
     <aside className="inspector-panel">
       <div className="inspector-heading">Inspector &amp; Edit Tools</div>
@@ -146,26 +137,6 @@ export default function Inspector({
           </>
         )}
       </div>
-
-      {selectedClip?.type === "video" && <div className="inspector-section">
-        <div className="section-title">Resolution Presets</div>
-        {selectedClip?.type === "audio" ? (
-          <p className="muted-note">Resolution presets apply to video tracks only.</p>
-        ) : (
-          <div className="preset-grid">
-            {RESOLUTIONS.map((r) => (
-              <button
-                key={r.label}
-                className="preset-btn"
-                onClick={() => onProcessClip("resize", { width: r.width, height: r.height })}
-                disabled={!hasVideoFile || selectedClip?.type === "audio"}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>}
 
       </>}
 

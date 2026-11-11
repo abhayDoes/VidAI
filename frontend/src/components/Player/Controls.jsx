@@ -1,15 +1,6 @@
 import { Icons } from "../../assets/icons";
+import { formatTimecodeMilliseconds } from "../../utils/formatTimecode";
 import "./Player.css";
-
-const formatTimecode = (secs) => {
-  if (!Number.isFinite(secs) || secs < 0) secs = 0;
-  const hours = Math.floor(secs / 3600);
-  const minutes = Math.floor((secs % 3600) / 60);
-  const seconds = Math.floor(secs % 60);
-  const frames = Math.floor((secs % 1) * 30);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)},${pad(frames)}`;
-};
 
 export default function Controls({
   isPlaying,
@@ -69,7 +60,7 @@ export default function Controls({
       </button>
 
       <span className="timecode-display">
-        {formatTimecode(currentTime)} / {formatTimecode(duration)}
+        {formatTimecodeMilliseconds(currentTime)} / {formatTimecodeMilliseconds(duration)}
       </span>
       <div className="preview-zoom-controls" aria-label="Video preview zoom">
         <button

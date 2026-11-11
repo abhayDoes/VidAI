@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import VideoFilmstrip from "./VideoFilmstrip";
 
 export default function Clip({
   clip,
@@ -156,6 +157,7 @@ export default function Clip({
       }}
     >
       <div className="clip-handle left" onMouseDown={(event) => handleTrimStart(event, "left")} />
+      {clip.type === "video" && <VideoFilmstrip clip={clip} />}
       <div className="clip-content-wrap">
         <span className="clip-type-icon">
           {clip.type === "audio" ? "🎵" : clip.type === "image" ? "▧" : "🎬"}

@@ -569,7 +569,6 @@ export default function App() {
           <div className="workspace-edit" role="tabpanel" id="workspace-edit" aria-labelledby="workspace-edit-tab" hidden={workspaceTab !== "edit"}>
             {selectedClip ? (
               <Inspector
-                videoFile={selectedClip.file}
                 selectedClip={selectedClip}
                 selectedTrack={timeline.tracks.find((track) => track.id === timeline.selectedTrackId)}
                 transform={selectedTransform}

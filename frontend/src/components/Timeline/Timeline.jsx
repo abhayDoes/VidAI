@@ -5,6 +5,7 @@ import TrackHeader from "./TrackHeader";
 import TrackLane from "./TrackLane";
 import Playhead from "./Playhead";
 import { PIXELS_PER_SECOND } from "../../hooks/useTimeline";
+import { formatTimecodeMilliseconds } from "../../utils/formatTimecode";
 import "./Timeline.css";
 
 export default function Timeline({
@@ -44,6 +45,22 @@ export default function Timeline({
   const timelineBodyRef = useRef(null);
   const [zoom, setZoom] = useState(PIXELS_PER_SECOND);
   const [isDragging, setIsDragging] = useState(false);
+  const [rulerViewport, setRulerViewport] = useState({ left: 0, width: 0 });
+
+  useEffect(() => {
+    const body = timelineBodyRef.current;
+    if (!body) return undefined;
+    const updateViewport = () => {
+      setRulerViewport({ left: body.scrollLeft, width: body.clientWidth });
+    };
+    updateViewport();
+    body.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      body.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, []);
 
   const timeFromEvent = useCallback(
     (e) => {
@@ -99,13 +116,13 @@ export default function Timeline({
     };
   }, [isDragging, duration, onSeek, onSetScrubbing, onSnapTime, timeFromEvent]);
 
-  const handleZoomIn = () => setZoom((prev) => Math.min(100, Math.round(prev * 1.3)));
+  const handleZoomIn = () => setZoom((prev) => Math.min(3000, Math.round(prev * 1.3)));
   const handleZoomOut = () => setZoom((prev) => Math.max(2, Math.round(prev / 1.3)));
   const handleZoomFit = () => {
     if (!timelineBodyRef.current || duration <= 0) return;
     const available = timelineBodyRef.current.clientWidth - 160;
     if (available > 100) {
-      const fitZoom = Math.max(2, Math.min(100, available / duration));
+      const fitZoom = Math.max(2, Math.min(3000, available / duration));
       setZoom(Math.round(fitZoom * 10) / 10);
     }
   };
@@ -136,7 +153,9 @@ export default function Timeline({
       <div className="timeline-body" ref={timelineBodyRef}>
         {/* Track Headers */}
         <div className="track-headers">
-          <div className="timecode-header">{formatShortTimecode(currentTime)}</div>
+          <div className="timecode-header" title="Playhead time (milliseconds)">
+            {formatTimecodeMilliseconds(currentTime)}
+          </div>
           {tracks.map((track) => (
             <TrackHeader
               key={track.id}
@@ -175,7 +194,12 @@ export default function Timeline({
             />
           ))}
 
-          <Ruler duration={duration} pixelsPerSecond={zoom} />
+          <Ruler
+            duration={duration}
+            pixelsPerSecond={zoom}
+            visibleStartPx={rulerViewport.left}
+            visibleWidthPx={Math.max(0, rulerViewport.width - 130)}
+          />
 
           {/* Track Rows */}
           {tracks.map((track, index) => (
@@ -202,13 +226,3 @@ export default function Timeline({
     </section>
   );
 }
-
-const formatShortTimecode = (secs) => {
-  if (!Number.isFinite(secs) || secs < 0) secs = 0;
-  const hours = Math.floor(secs / 3600);
-  const minutes = Math.floor((secs % 3600) / 60);
-  const seconds = Math.floor(secs % 60);
-  const frames = Math.floor((secs % 1) * 30);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)},${pad(frames)}`;
-};
