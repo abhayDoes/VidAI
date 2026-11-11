@@ -1,6 +1,6 @@
 const ASPECT_PRESETS = ["16:9", "9:16", "1:1"];
 
-export default function Transform({ transform, onRotate, onChange, disabled = false }) {
+export default function Transform({ transform, onRotate, onChange, disabled = false, showAspect = true }) {
   const flip = (axis) => {
     onChange({
       ...transform,
@@ -33,7 +33,7 @@ export default function Transform({ transform, onRotate, onChange, disabled = fa
         </button>
       </div>
 
-      <div className="transform-row">
+      {showAspect && <div className="transform-row">
         <span className="transform-label">Aspect</span>
         <div className="preset-grid">
           {ASPECT_PRESETS.map((preset) => (
@@ -49,7 +49,7 @@ export default function Transform({ transform, onRotate, onChange, disabled = fa
             </button>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

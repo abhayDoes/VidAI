@@ -121,7 +121,7 @@ export default function Clip({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${clip.type === "audio" ? "Audio" : "Video"} clip: ${clip.title}`}
+      aria-label={`${clip.type === "audio" ? "Audio" : clip.type === "image" ? "Image overlay" : "Video"} clip: ${clip.title}`}
       aria-pressed={isSelected}
       className={`timeline-clip ${isSelected ? "selected" : ""} ${
         clip.type === "audio" ? "audio-clip" : "video-clip"
@@ -158,7 +158,7 @@ export default function Clip({
       <div className="clip-handle left" onMouseDown={(event) => handleTrimStart(event, "left")} />
       <div className="clip-content-wrap">
         <span className="clip-type-icon">
-          {clip.type === "audio" ? "🎵" : "🎬"}
+          {clip.type === "audio" ? "🎵" : clip.type === "image" ? "▧" : "🎬"}
         </span>
         <span className="clip-title">{clip.title}</span>
       </div>

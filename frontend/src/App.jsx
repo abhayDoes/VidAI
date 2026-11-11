@@ -6,11 +6,14 @@ import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
 import ClipMenu from "./components/Timeline/ClipMenu";
 import MediaPanel from "./components/MediaPanel/MediaPanel";
+import ExportDialog from "./components/ExportDialog";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
 import useAudioMixer from "./hooks/useAudioMixer";
 import { isAudioFile, loadAudioFile } from "./utils/audioUtils";
+import { isImageFile, loadImageFile } from "./utils/mediaUtils";
 import { downloadFile, exportTimeline, processClip } from "./services/ffmpeg";
+import { createProjectFile, readProjectFile } from "./services/projectFile";
 import "./App.css";
 import "./Studio.css";
 
@@ -24,7 +27,11 @@ const DEFAULT_TRANSFORM = {
 export default function App() {
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
+  const projectInputRef = useRef(null);
   const [status, setStatus] = useState("");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [clipMenu, setClipMenu] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState("media");
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
@@ -67,7 +74,7 @@ export default function App() {
   const activeClip = timeline.clips
     .filter(
       (clip) =>
-        clip.type !== "audio" &&
+        clip.type === "video" &&
         visibleTrackIds.has(clip.trackId) &&
         player.currentTime >= clip.start - 0.001 &&
         player.currentTime < clip.start + clip.duration
@@ -76,6 +83,11 @@ export default function App() {
       timeline.tracks.findIndex((track) => track.id === a.trackId) -
       timeline.tracks.findIndex((track) => track.id === b.trackId)
     )[0];
+  const activeImageClips = timeline.clips
+    .filter((clip) => clip.type === "image" && visibleTrackIds.has(clip.trackId) &&
+      player.currentTime >= clip.start - 0.001 && player.currentTime < clip.start + clip.duration)
+    .sort((a, b) => timeline.tracks.findIndex((track) => track.id === b.trackId) -
+      timeline.tracks.findIndex((track) => track.id === a.trackId));
 
   // Rotation / flip / aspect are per-clip: the preview follows the clip under
   // the playhead, while the Inspector edits the selected clip.
@@ -123,11 +135,14 @@ export default function App() {
     for (const [index, file] of files.entries()) {
       try {
         const isAudio = isAudioFile(file);
+        const isImage = isImageFile(file);
         let media;
         const trackId = targetTrack.id;
 
         if (isAudio) {
           media = await loadAudioFile(file);
+        } else if (isImage) {
+          media = await loadImageFile(file);
         } else {
           media = await player.loadVideo(file);
         }
@@ -140,14 +155,18 @@ export default function App() {
             : 30;
 
         let clipStart = nextStart;
-        for (const range of [...occupied].sort((a, b) => a.start - b.start)) {
-          if (clipStart < range.end && clipStart + safeDuration > range.start) clipStart = range.end;
+        if (isImage) {
+          clipStart = player.currentTime;
+        } else {
+          for (const range of [...occupied].sort((a, b) => a.start - b.start)) {
+            if (clipStart < range.end && clipStart + safeDuration > range.start) clipStart = range.end;
+          }
         }
 
         const clip = {
           id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
           trackId,
-          type: isAudio ? "audio" : "video",
+          type: isAudio ? "audio" : isImage ? "image" : "video",
           title: file.name,
           filename: file.name,
           file,
@@ -159,6 +178,9 @@ export default function App() {
           sourceMax: safeDuration,
           speed: 1,
           volume: 1,
+          overlayScale: 25,
+          overlayX: 50,
+          overlayY: 50,
           ...DEFAULT_TRANSFORM,
           start: clipStart,
           duration: safeDuration,
@@ -166,8 +188,10 @@ export default function App() {
         timeline.addClip(clip);
         importedClips.push(clip);
 
-        nextStart = clipStart + safeDuration;
-        occupied.push({ start: clipStart, end: nextStart });
+        if (!isImage) {
+          nextStart = clipStart + safeDuration;
+          occupied.push({ start: clipStart, end: nextStart });
+        }
       } catch (error) {
         console.error(error);
         setStatus(`Could not read ${file.name}`);
@@ -189,28 +213,91 @@ export default function App() {
     }
   };
 
-  const handleExport = async () => {
-    if (!visibleClips.length) {
-      fileInputRef.current?.click();
-      return;
+  const handleExport = () => {
+    setExportProgress(0);
+    setExportDialogOpen(true);
+  };
+
+  const handleRunExport = async ({ filename, resolution }) => {
+    const baseName = filename.trim()
+      .replace(/\.mp4$/i, "")
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+      .replace(/[. ]+$/g, "") || "vidai-export";
+    const outputName = `${baseName}.mp4`;
+    let destinationHandle;
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        destinationHandle = await window.showSaveFilePicker({
+          suggestedName: outputName,
+          types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
+        });
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setStatus(error.message || "Could not choose an export location");
+        return;
+      }
     }
 
-    const videoClips = visibleClips.filter((c) => c.type !== "audio");
-    if (!videoClips.length) {
-      setStatus("Add a video clip before exporting");
-      return;
-    }
+    setIsExporting(true);
+    setExportProgress(0);
     setStatus("Preparing FFmpeg.wasm in your browser...");
+    let resultUrl;
     try {
       const result = await exportTimeline(visibleClips, timeline.tracks, (progress) => {
+        setExportProgress(progress);
         setStatus(`Rendering locally: ${Math.round(progress * 100)}%`);
-      });
-      downloadFile(result.file);
+      }, { resolution });
+      resultUrl = result.url;
+      if (destinationHandle) {
+        const writable = await destinationHandle.createWritable();
+        await writable.write(result.file);
+        await writable.close();
+      } else {
+        downloadFile(result.file, outputName);
+      }
       URL.revokeObjectURL(result.url);
-      setStatus("Export complete — your MP4 download has started");
+      setStatus(`Export complete — saved ${destinationHandle?.name || outputName}`);
+      setExportDialogOpen(false);
     } catch (error) {
       console.error(error);
       setStatus(error.message || "Local export failed");
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleSaveProject = async () => {
+    setStatus("Packaging project and local media...");
+    try {
+      const file = await createProjectFile({
+        clips: timeline.clips,
+        tracks: timeline.tracks,
+        markers: timeline.markers,
+      });
+      downloadFile(file);
+      setStatus("Project saved as vidai-project.vidai");
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || "Could not save project");
+    }
+  };
+
+  const handleLoadProject = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setStatus("Loading project and local media...");
+    try {
+      const project = await readProjectFile(file);
+      timeline.replaceProject(project);
+      player.setIsPlaying(false);
+      const firstVideo = project.clips.filter((clip) => clip.type === "video").sort((a, b) => a.start - b.start)[0];
+      player.setCurrentTime(firstVideo?.start || 0);
+      setStatus(`Loaded project: ${file.name}`);
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || "Could not load project");
     }
   };
 
@@ -438,13 +525,15 @@ export default function App() {
         hasAudio={timeline.clips.some((c) => c.type === "audio")}
         onImport={() => fileInputRef.current?.click()}
         onImportAudio={() => audioInputRef.current?.click()}
+        onSaveProject={handleSaveProject}
+        onLoadProject={() => projectInputRef.current?.click()}
         onExport={handleExport}
       />
 
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/*,audio/*"
+        accept="video/*,audio/*,image/*"
         multiple
         style={{ display: "none" }}
         onChange={handleFileChange}
@@ -457,6 +546,14 @@ export default function App() {
         multiple
         style={{ display: "none" }}
         onChange={handleFileChange}
+      />
+
+      <input
+        ref={projectInputRef}
+        type="file"
+        accept=".vidai,application/json"
+        style={{ display: "none" }}
+        onChange={handleLoadProject}
       />
 
       <div className="studio-body">
@@ -501,11 +598,19 @@ export default function App() {
             flipH={activeTransform.flipH}
             flipV={activeTransform.flipV}
             aspectRatio={activeTransform.aspectRatio}
+            zoom={activeClip?.zoom ?? 1}
+            positionX={activeClip?.positionX ?? 50}
+            positionY={activeClip?.positionY ?? 50}
+            imageOverlays={activeImageClips}
             hasClips={timeline.clips.length > 0}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
             gpuPreviewEnabled={true}
             onGpuStatus={setStatus}
+            onUpdateClip={timeline.updateClip}
+            onSelectClip={timeline.selectClip}
+            onBeginCanvasEdit={timeline.beginHistoryGroup}
+            onEndCanvasEdit={timeline.endHistoryGroup}
             muted={activeClip?.muted || false}
             trackMuted={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.muted || false}
             trackVolume={timeline.tracks.find((track) => track.id === activeClip?.trackId)?.volume ?? 1}
@@ -517,6 +622,12 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             onStop={handleStop}
             onSeek={handleSeek}
+            zoom={activeClip?.zoom ?? 1}
+            canZoom={activeClip?.type !== "audio" && Boolean(activeClip)}
+            onZoomChange={(zoom) => activeClip && timeline.updateClip(activeClip.id, { zoom })}
+            onZoomFit={() => activeClip && timeline.updateClip(activeClip.id, { zoom: 1, positionX: 50, positionY: 50 })}
+            onBeginZoomEdit={timeline.beginHistoryGroup}
+            onEndZoomEdit={timeline.endHistoryGroup}
           />
         </div>
 
@@ -569,6 +680,14 @@ export default function App() {
           }}
           onMore={() => { closeClipMenu(); setWorkspaceTab("edit"); }} />
       )}
+      <ExportDialog
+        open={exportDialogOpen}
+        canExport={visibleClips.some((clip) => clip.type === "video")}
+        exporting={isExporting}
+        progress={exportProgress}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleRunExport}
+      />
     </div>
   );
 }

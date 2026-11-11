@@ -1,0 +1,58 @@
+.export-dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: #0009;
+  backdrop-filter: blur(3px);
+}
+
+.export-dialog {
+  width: min(440px, 100%);
+  padding: 22px;
+  border: 1px solid #34343a;
+  border-radius: 12px;
+  background: #18181b;
+  color: #ededf0;
+  box-shadow: 0 24px 80px #000a;
+}
+
+.export-dialog-header,
+.export-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-dialog-header { margin-bottom: 22px; }
+.export-dialog-eyebrow { color: #ff8524; font-size: 9px; font-weight: 750; letter-spacing: .12em; }
+.export-dialog h2 { margin: 5px 0 0; font-size: 19px; }
+.export-dialog-close { width: 32px; height: 32px; border: 1px solid #34343a; border-radius: 7px; background: #222226; color: #ddd; font-size: 22px; cursor: pointer; }
+.export-dialog-close:disabled { opacity: .5; cursor: default; }
+.export-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; color: #c4c4ca; font-size: 12px; font-weight: 600; }
+.export-filename-row { display: flex; align-items: center; gap: 8px; }
+.export-filename-row input,
+.export-field select { width: 100%; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid #36363c; border-radius: 6px; background: #101013; color: #f1f1f3; font: inherit; }
+.export-filename-row span { color: #898990; font-size: 12px; }
+.export-resolution-note,
+.export-destination span,
+.export-validation,
+.export-progress > span { color: #96969e; font-size: 11px; line-height: 1.5; }
+.export-resolution-note { margin: -7px 0 17px; }
+.export-destination { display: flex; flex-direction: column; gap: 5px; padding: 12px; border: 1px solid #303036; border-radius: 7px; background: #121215; }
+.export-destination strong { font-size: 11px; }
+.export-validation { margin: 13px 0 0; color: #ffba7a; }
+.export-progress { display: flex; flex-direction: column; gap: 7px; margin-top: 16px; }
+.export-progress-track { height: 6px; overflow: hidden; border-radius: 10px; background: #303036; }
+.export-progress-track span { display: block; height: 100%; border-radius: inherit; background: #ff790b; transition: width .15s ease; }
+.export-dialog-actions { justify-content: flex-end; margin-top: 22px; }
+.export-dialog-actions .primary { background: #ff790b; border-color: #ff790b; color: #140e09; font-weight: 750; }
+.export-dialog-actions button:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 520px) {
+  .export-dialog { padding: 17px; }
+  .export-dialog-actions { align-items: stretch; flex-direction: column-reverse; }
+}

@@ -12,6 +12,7 @@ const initial = {
 };
 
 function historyReducer(state, action) {
+  if (action.type === "replace") return { past: [], present: action.present, future: [], group: null };
   if (action.type === "begin") return state.group ? state : { ...state, group: state.present };
   if (action.type === "end") {
     if (!state.group) return state;
@@ -60,6 +61,14 @@ export default function useTimeline({ videoDuration }) {
     setSelectedClipId(clip.id);
     setSelectedTrackId(clip.trackId);
   }, [edit]);
+  const replaceProject = useCallback((project) => {
+    const tracks = project.tracks?.length ? project.tracks : initial.tracks;
+    const clips = project.clips || [];
+    const markers = project.markers || [];
+    dispatch({ type: "replace", present: { tracks, clips, markers } });
+    setSelectedClipId(clips[0]?.id ?? null);
+    setSelectedTrackId(clips[0]?.trackId ?? tracks[0]?.id ?? 1);
+  }, []);
   const addTrack = useCallback(() => edit((state) => {
     const nextId = state.tracks.length ? Math.max(...state.tracks.map((t) => t.id)) + 1 : 1;
     const track = { id: nextId, name: `Track ${nextId}`, volume: 1, locked: false, visible: true, muted: false };
@@ -146,7 +155,7 @@ export default function useTimeline({ videoDuration }) {
   }, [isSnapping, clips, markers]);
 
   return { tracks, clips, markers, selectedClipId, selectedTrackId, selectTrack, isSnapping, setIsSnapping,
-    timelineDuration: Math.max(videoDuration, 120), addClip, addTrack, toggleTrackLock, toggleTrackVisible,
+    timelineDuration: Math.max(videoDuration, 120), addClip, replaceProject, addTrack, toggleTrackLock, toggleTrackVisible,
     setTrackVolume, toggleTrackMute, splitClip, addMarker, deleteClip, updateClip, moveClipToTrack,
     selectClip, snapTime, undo, redo, beginHistoryGroup, startHistoryGroup, endHistoryGroup,
     canUndo: !history.group && history.past.length > 0, canRedo: !history.group && history.future.length > 0 };

@@ -164,10 +164,11 @@ async function hasAudioStream(engine, input) {
   return exitCode === 0;
 }
 
-async function exportTimelineInternal(clips, tracks = [], onProgress) {
-  const videos = clips
+async function exportTimelineInternal(clips, tracks = [], onProgress, options = {}) {
+  const visualClips = clips
     .filter((clip) => clip.type !== "audio" && clip.file && clip.duration > 0)
     .sort((a, b) => a.start - b.start);
+  const videos = visualClips.filter((clip) => clip.type === "video");
   if (!videos.length) throw new Error("Add a video clip to the timeline before exporting.");
 
   const audioTracks = new Map(tracks.map((track) => [track.id, track]));
@@ -182,9 +183,13 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   const inputNames = [];
   const output = nextFileName("vidai-export");
   try {
-  for (const clip of videos) {
+  for (const clip of visualClips) {
     inputNames.push(await writeInput(engine, clip.file));
-    args.push("-i", inputNames.at(-1));
+    if (clip.type === "image") {
+      args.push("-loop", "1", "-framerate", "30", "-t", String(Math.max(0.1, clip.duration * (clip.speed || 1))), "-i", inputNames.at(-1));
+    } else {
+      args.push("-i", inputNames.at(-1));
+    }
   }
   const audioInputStart = inputNames.length;
   for (const clip of audio) {
@@ -196,25 +201,38 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   let height = evenDimension(videos[0].height, 720);
   const ratios = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1 };
   const targetAspect = ratios[videos[0].aspectRatio] || width / height;
-  if (width / height > targetAspect) width = evenDimension(height * targetAspect, height);
-  else height = evenDimension(width / targetAspect, width);
+  const resolutionHeights = { "720": 720, "1080": 1080, "1440": 1440, "2160": 2160 };
+  const targetHeight = resolutionHeights[options.resolution];
+  if (targetHeight) {
+    if (targetAspect >= 1) {
+      height = targetHeight;
+      width = evenDimension(height * targetAspect, width);
+    } else {
+      width = targetHeight;
+      height = evenDimension(width / targetAspect, height);
+    }
+  } else if (width / height > targetAspect) {
+    width = evenDimension(height * targetAspect, height);
+  } else {
+    height = evenDimension(width / targetAspect, width);
+  }
   const graph = [];
-  const endTime = Math.max(...[...videos, ...audio].map((clip) => Number(clip.start) + Number(clip.duration)));
-  const videoLayers = [];
+  const endTime = Math.max(...[...visualClips, ...audio].map((clip) => Number(clip.start) + Number(clip.duration)));
+  const visualLayers = [];
   const audioLabels = [];
   graph.push(`color=c=black:s=${width}x${height}:r=30:d=${endTime},format=yuv420p[canvas]`);
   const videoAudioStreams = [];
-  for (let index = 0; index < videos.length; index += 1) {
-    videoAudioStreams.push(await hasAudioStream(engine, inputNames[index]));
+  for (let index = 0; index < visualClips.length; index += 1) {
+    videoAudioStreams.push(visualClips[index].type === "video" && await hasAudioStream(engine, inputNames[index]));
   }
 
-  videos.forEach((clip, index) => {
+  visualClips.forEach((clip, index) => {
     const speed = Math.max(0.05, Number(clip.speed) || 1);
     const sourceStart = Math.max(0, Number(clip.sourceStart) || 0);
     const sourceDuration = Math.max(0.1, clip.duration * speed);
     const targetDuration = sourceDuration / speed;
     const visualFilters = [
-      `trim=start=${sourceStart}:duration=${sourceDuration}`,
+      `trim=start=${clip.type === "image" ? 0 : sourceStart}:duration=${sourceDuration}`,
       "setpts=PTS-STARTPTS",
       `setpts=PTS/${speed}+${Math.max(0, Number(clip.start) || 0)}/TB`,
     ];
@@ -224,42 +242,66 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
     else if (rotation === 270) visualFilters.push("transpose=2");
     if (clip.flipH) visualFilters.push("hflip");
     if (clip.flipV) visualFilters.push("vflip");
-    visualFilters.push(
-      `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-      "setsar=1",
-      "fps=30",
-    );
-    visualFilters.push("format=yuv420p");
+    if (clip.type === "image") {
+      const imageScale = Math.max(0.05, Math.min(4, Number(clip.overlayScale) / 100 || 0.25));
+      const imageWidth = evenDimension(width * imageScale, 2);
+      const imageHeight = evenDimension(height * imageScale, 2);
+      visualFilters.push(
+        `scale=${imageWidth}:${imageHeight}:force_original_aspect_ratio=decrease`,
+        "format=rgba",
+        `pad=${imageWidth}:${imageHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`,
+        "fps=30",
+      );
+    } else {
+      const zoom = Math.max(0.25, Math.min(4, Number(clip.zoom) || 1));
+      const scaledWidth = evenDimension(width * zoom, width);
+      const scaledHeight = evenDimension(height * zoom, height);
+      visualFilters.push(
+        `scale=${scaledWidth}:${scaledHeight}:force_original_aspect_ratio=decrease`,
+        "setsar=1",
+        "fps=30",
+        "format=yuv420p",
+      );
+    }
     graph.push(`[${index}:v]${visualFilters.join(",")}[v${index}]`);
 
-    const audioLabel = `a${index}`;
-    const audioFilters = [
-      `atrim=start=${sourceStart}:duration=${sourceDuration}`,
-      "asetpts=PTS-STARTPTS",
-      "aresample=44100",
-      "aformat=sample_rates=44100:channel_layouts=stereo",
-      ...atempoFilters(speed),
-      `apad=pad_dur=${targetDuration}`,
-      `atrim=duration=${targetDuration}`,
-      `volume=${clip.muted || audioTracks.get(clip.trackId)?.muted ? 0 : (audioTracks.get(clip.trackId)?.volume ?? 1)}`,
-    ];
-    if (videoAudioStreams[index]) {
-      graph.push(`[${index}:a]${audioFilters.join(",")} [${audioLabel}]`);
-    } else {
-      graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${targetDuration},asetpts=PTS-STARTPTS[${audioLabel}]`);
+    if (clip.type === "video") {
+      const audioLabel = `a${index}`;
+      const audioFilters = [
+        `atrim=start=${sourceStart}:duration=${sourceDuration}`,
+        "asetpts=PTS-STARTPTS",
+        "aresample=44100",
+        "aformat=sample_rates=44100:channel_layouts=stereo",
+        ...atempoFilters(speed),
+        `apad=pad_dur=${targetDuration}`,
+        `atrim=duration=${targetDuration}`,
+        `volume=${clip.muted || audioTracks.get(clip.trackId)?.muted ? 0 : (audioTracks.get(clip.trackId)?.volume ?? 1)}`,
+      ];
+      if (videoAudioStreams[index]) {
+        graph.push(`[${index}:a]${audioFilters.join(",")} [${audioLabel}]`);
+      } else {
+        graph.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${targetDuration},asetpts=PTS-STARTPTS[${audioLabel}]`);
+      }
+      const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
+      graph.push(`[${audioLabel}]adelay=${delay}|${delay}[delayed${index}]`);
+      audioLabels.push(`[delayed${index}]`);
     }
-    const delay = Math.round(Math.max(0, Number(clip.start) || 0) * 1000);
-    graph.push(`[${audioLabel}]adelay=${delay}|${delay}[delayed${index}]`);
-    audioLabels.push(`[delayed${index}]`);
-    videoLayers.push({ index, priority: tracks.findIndex((track) => track.id === clip.trackId) });
+    visualLayers.push({ index, type: clip.type, clip, priority: tracks.findIndex((track) => track.id === clip.trackId) });
   });
 
-  videoLayers.sort((a, b) => b.priority - a.priority || a.index - b.index);
+  visualLayers.sort((a, b) => b.priority - a.priority || Number(a.type === "image") - Number(b.type === "image") || a.index - b.index);
   let base = "canvas";
-  videoLayers.forEach(({ index }, layer) => {
-    const next = layer === videoLayers.length - 1 ? "outv" : `layer${layer}`;
-    graph.push(`[${base}][v${index}]overlay=eof_action=pass:repeatlast=0[${next}]`);
+  visualLayers.forEach(({ index, type, clip }, layer) => {
+    const next = layer === visualLayers.length - 1 ? "outv" : `layer${layer}`;
+    if (type === "image") {
+      const x = Math.max(0, Math.min(100, Number(clip.overlayX ?? 50))) / 100;
+      const y = Math.max(0, Math.min(100, Number(clip.overlayY ?? 50))) / 100;
+      graph.push(`[${base}][v${index}]overlay=x='main_w*${x}-overlay_w/2':y='main_h*${y}-overlay_h/2':eof_action=pass:repeatlast=0[${next}]`);
+    } else {
+      const x = Math.max(0, Math.min(100, Number(clip.positionX ?? 50))) / 100;
+      const y = Math.max(0, Math.min(100, Number(clip.positionY ?? 50))) / 100;
+      graph.push(`[${base}][v${index}]overlay=x='main_w*${x}-overlay_w/2':y='main_h*${y}-overlay_h/2':eof_action=pass:repeatlast=0[${next}]`);
+    }
     base = next;
   });
   audio.forEach((clip, index) => {
@@ -292,8 +334,8 @@ async function exportTimelineInternal(clips, tracks = [], onProgress) {
   }
 }
 
-export function exportTimeline(clips, tracks = [], onProgress) {
-  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress));
+export function exportTimeline(clips, tracks = [], onProgress, options = {}) {
+  return enqueueTask(() => exportTimelineInternal(clips, tracks, onProgress, options));
 }
 
 export function downloadFile(file, filename = file.name) {

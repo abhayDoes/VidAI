@@ -32,7 +32,7 @@ export default function Inspector({
       <div className="inspector-heading">Inspector &amp; Edit Tools</div>
       <div className="inspector-section">
         <div className="section-title">{selectedTrack?.name || "Select a track"}</div>
-        <p className="muted-note">{selectedClip ? `${selectedClip.type === "audio" ? "Audio" : "Video"}: ${selectedClip.title}` : "Click an audio or video clip to see its editing tools."}</p>
+        <p className="muted-note">{selectedClip ? `${selectedClip.type === "audio" ? "Audio" : selectedClip.type === "image" ? "Image overlay" : "Video"}: ${selectedClip.title}` : "Click an audio, image, or video clip to see its editing tools."}</p>
       </div>
 
       {selectedClip?.type === "audio" && (
@@ -57,7 +57,7 @@ export default function Inspector({
         </div>
       )}
 
-      <div className="inspector-section">
+      {selectedClip?.type !== "image" && <div className="inspector-section">
         <div className="section-title">Audio Tools</div>
         {!selectedClip ? (
           <p className="muted-note">Select a clip to edit its audio.</p>
@@ -90,7 +90,29 @@ export default function Inspector({
             </button>
           </div>
         )}
-      </div>
+      </div>}
+
+      {selectedClip?.type === "image" && <div className="inspector-section image-overlay-tools">
+        <div className="section-title">Image Overlay</div>
+        <label className="slider-label">
+          <span>Size / zoom: {Math.round(selectedClip.overlayScale ?? 25)}%</span>
+          <input type="range" min="5" max="400" step="1" value={selectedClip.overlayScale ?? 25}
+            onMouseDown={onBeginEdit}
+            onChange={(event) => onUpdateClip(selectedClip.id, { overlayScale: Number(event.target.value) })} />
+        </label>
+        <label className="slider-label">
+          <span>Horizontal position: {Math.round(selectedClip.overlayX ?? 50)}%</span>
+          <input type="range" min="0" max="100" step="1" value={selectedClip.overlayX ?? 50}
+            onMouseDown={onBeginEdit}
+            onChange={(event) => onUpdateClip(selectedClip.id, { overlayX: Number(event.target.value) })} />
+        </label>
+        <label className="slider-label">
+          <span>Vertical position: {Math.round(selectedClip.overlayY ?? 50)}%</span>
+          <input type="range" min="0" max="100" step="1" value={selectedClip.overlayY ?? 50}
+            onMouseDown={onBeginEdit}
+            onChange={(event) => onUpdateClip(selectedClip.id, { overlayY: Number(event.target.value) })} />
+        </label>
+      </div>}
 
       <div className="inspector-section">
         <div className="section-title">Speed</div>
@@ -111,11 +133,12 @@ export default function Inspector({
           <>
             <Transform
               transform={transform}
-              onRotate={(angle) => onProcessClip("rotate", {
-                angle: ((transform.rotation + angle) % 360) || 360,
-              })}
+              onRotate={(angle) => selectedClip.type === "image"
+                ? onUpdateClip(selectedClip.id, { rotation: ((transform.rotation + angle) % 360) || 360 })
+                : onProcessClip("rotate", { angle: ((transform.rotation + angle) % 360) || 360 })}
               onChange={onTransformChange}
               disabled={!selectedClip}
+              showAspect={selectedClip.type === "video"}
             />
             {!selectedClip && (
               <p className="muted-note">Select a clip to rotate or flip just that part.</p>
@@ -124,7 +147,7 @@ export default function Inspector({
         )}
       </div>
 
-      <div className="inspector-section">
+      {selectedClip?.type === "video" && <div className="inspector-section">
         <div className="section-title">Resolution Presets</div>
         {selectedClip?.type === "audio" ? (
           <p className="muted-note">Resolution presets apply to video tracks only.</p>
@@ -142,7 +165,7 @@ export default function Inspector({
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       </>}
 

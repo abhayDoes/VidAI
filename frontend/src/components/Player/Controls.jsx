@@ -18,6 +18,12 @@ export default function Controls({
   onTogglePlay,
   onStop,
   onSeek,
+  zoom = 1,
+  canZoom = false,
+  onZoomChange,
+  onBeginZoomEdit,
+  onEndZoomEdit,
+  onZoomFit,
 }) {
   return (
     <div className="playback-bar">
@@ -65,6 +71,41 @@ export default function Controls({
       <span className="timecode-display">
         {formatTimecode(currentTime)} / {formatTimecode(duration)}
       </span>
+      <div className="preview-zoom-controls" aria-label="Video preview zoom">
+        <button
+          className="control-btn zoom-step-btn"
+          onClick={() => onZoomChange?.(Math.max(0.25, Math.round((zoom - 0.1) * 100) / 100))}
+          disabled={!canZoom || zoom <= 0.25}
+          title="Zoom out"
+          aria-label="Zoom out"
+        >−</button>
+        <input
+          aria-label="Video zoom"
+          type="range"
+          min="0.25"
+          max="4"
+          step="0.05"
+          value={zoom}
+          disabled={!canZoom}
+          onPointerDown={onBeginZoomEdit}
+          onPointerUp={onEndZoomEdit}
+          onChange={(event) => onZoomChange?.(Number(event.target.value))}
+        />
+        <button
+          className="control-btn zoom-step-btn"
+          onClick={() => onZoomChange?.(Math.min(4, Math.round((zoom + 0.1) * 100) / 100))}
+          disabled={!canZoom || zoom >= 4}
+          title="Zoom in"
+          aria-label="Zoom in"
+        >+</button>
+        <button
+          className="control-btn zoom-fit-btn"
+          onClick={onZoomFit || (() => onZoomChange?.(1))}
+          disabled={!canZoom}
+          title="Fit video to player"
+        >Fit</button>
+        <span className="zoom-value">{Math.round(zoom * 100)}%</span>
+      </div>
     </div>
   );
 }

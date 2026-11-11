@@ -14,12 +14,16 @@ export default function VideoPlayer({
   clipStart = 0,
   sourceStart = 0,
   speed = 1,
+  imageOverlays = [],
   currentTime = 0,
   isPlaying = false,
   rotation,
   flipH,
   flipV,
   aspectRatio,
+  zoom = 1,
+  positionX = 50,
+  positionY = 50,
   onTimeUpdate,
   onEnded,
   onTogglePlay,
@@ -30,10 +34,16 @@ export default function VideoPlayer({
   trackMuted = false,
   trackVolume = 1,
   hasClips = false,
+  onUpdateClip,
+  onSelectClip,
+  onBeginCanvasEdit,
+  onEndCanvasEdit,
 }) {
   const lastClipIdRef = useRef(clipId);
   const lastSpeedRef = useRef(speed);
   const canvasRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
   const gpuReady = useWebGpuPreview(videoRef, canvasRef, videoUrl, gpuPreviewEnabled, onGpuStatus);
 
   useEffect(() => {
@@ -88,43 +98,132 @@ export default function VideoPlayer({
   }, [videoRef, videoUrl, clipId, clipStart, sourceStart, speed, currentTime, isPlaying]);
 
   const transformStyle = {
-    transform: `rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${
-      flipV ? -1 : 1
-    })`,
+    left: `${positionX}%`,
+    top: `${positionY}%`,
+    right: "auto",
+    bottom: "auto",
+    transform: `translate(-50%, -50%) rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1}) scale(${zoom})`,
+  };
+
+  const handleCanvasPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const imageElement = event.target.closest?.("[data-image-clip-id]");
+    const imageClip = imageElement
+      ? imageOverlays.find((image) => image.id === imageElement.dataset.imageClipId)
+      : null;
+    const targetClip = imageClip || (videoUrl ? { id: clipId, type: "video", positionX, positionY } : null);
+    if (!targetClip?.id) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    onSelectClip?.(targetClip.id);
+    onBeginCanvasEdit?.();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      clipId: targetClip.id,
+      type: targetClip.type,
+      startX: event.clientX,
+      startY: event.clientY,
+      positionX: targetClip.type === "image" ? targetClip.overlayX ?? 50 : targetClip.positionX ?? 50,
+      positionY: targetClip.type === "image" ? targetClip.overlayY ?? 50 : targetClip.positionY ?? 50,
+      width: bounds.width,
+      height: bounds.height,
+      moved: false,
+    };
+  };
+
+  const handleCanvasPointerMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 1) drag.moved = true;
+    const position = {
+      x: Math.max(0, Math.min(100, drag.positionX + (deltaX / drag.width) * 100)),
+      y: Math.max(0, Math.min(100, drag.positionY + (deltaY / drag.height) * 100)),
+    };
+    onUpdateClip?.(drag.clipId, drag.type === "image"
+      ? { overlayX: position.x, overlayY: position.y }
+      : { positionX: position.x, positionY: position.y });
+  };
+
+  const handleCanvasPointerUp = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressClickRef.current = drag.moved;
+    dragRef.current = null;
+    onEndCanvasEdit?.();
+  };
+
+  const handleCanvasClick = (event) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    if (event.target.closest?.("[data-image-clip-id]")) return;
+    if (videoUrl) onTogglePlay?.();
   };
 
   return (
     <main className="preview-workspace">
-      {videoUrl ? (
-        <div className={`player-frame ${ASPECT_CLASS[aspectRatio] || "aspect-16-9"}`}>
-          <video
-            key={videoUrl}
-            ref={videoRef}
-            src={videoUrl}
-            muted={muted || trackMuted}
-            className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
-            style={transformStyle}
-            onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={(event) => {
-              const video = event.currentTarget;
-              if (Number.isFinite(speed) && speed > 0) {
-                video.playbackRate = speed;
-              }
-              video.currentTime = Math.max(
-                0,
-                sourceStart + (currentTime - clipStart) * speed
-              );
-              if (isPlaying) video.play().catch(() => {});
-            }}
-            onEnded={onEnded}
-            onClick={onTogglePlay}
-          />
-          <canvas
-            ref={canvasRef}
-            className={`video-screen gpu-preview-canvas ${gpuReady ? "gpu-preview-ready" : ""}`}
-            style={transformStyle}
-            aria-hidden="true"
-          />
+      {videoUrl || imageOverlays.length ? (
+        <div
+          className={`player-frame ${ASPECT_CLASS[aspectRatio] || "aspect-16-9"}`}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerUp}
+          onPointerCancel={handleCanvasPointerUp}
+          onClick={handleCanvasClick}
+          style={{ touchAction: "none" }}
+        >
+          {videoUrl && <>
+            <video
+              key={videoUrl}
+              ref={videoRef}
+              src={videoUrl}
+              muted={muted || trackMuted}
+              className={`video-screen ${gpuReady ? "video-screen-gpu-source" : ""}`}
+              style={transformStyle}
+              onTimeUpdate={onTimeUpdate}
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget;
+                if (Number.isFinite(speed) && speed > 0) {
+                  video.playbackRate = speed;
+                }
+                video.currentTime = Math.max(
+                  0,
+                  sourceStart + (currentTime - clipStart) * speed
+                );
+                if (isPlaying) video.play().catch(() => {});
+              }}
+              onEnded={onEnded}
+            />
+            <canvas
+              ref={canvasRef}
+              className={`video-screen gpu-preview-canvas ${gpuReady ? "gpu-preview-ready" : ""}`}
+              style={transformStyle}
+              aria-hidden="true"
+            />
+          </>}
+          {imageOverlays.map((image) => (
+            <img
+              key={image.id}
+              className="image-overlay-layer"
+              data-image-clip-id={image.id}
+              src={image.sourceUrl}
+              alt={image.title || "Image overlay"}
+              draggable="false"
+              style={{
+                width: `${Math.max(5, Math.min(400, image.overlayScale ?? 25))}%`,
+                height: `${Math.max(5, Math.min(400, image.overlayScale ?? 25))}%`,
+                left: `${Math.max(0, Math.min(100, image.overlayX ?? 50))}%`,
+                top: `${Math.max(0, Math.min(100, image.overlayY ?? 50))}%`,
+                transform: `translate(-50%, -50%) rotate(${image.rotation || 0}deg) scaleX(${image.flipH ? -1 : 1}) scaleY(${image.flipV ? -1 : 1})`,
+              }}
+            />
+          ))}
         </div>
       ) : (
         <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>

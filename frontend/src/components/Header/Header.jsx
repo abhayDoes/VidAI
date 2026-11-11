@@ -7,6 +7,8 @@ export default function Header({
   hasAudio,
   onImport,
   onImportAudio,
+  onSaveProject,
+  onLoadProject,
   onExport,
 }) {
   return (
@@ -20,7 +22,7 @@ export default function Header({
       <div className="header-actions">
         {status && <span className="status-text">{status}</span>}
         <button className="nav-btn" onClick={onImport} title="Import media to the selected track">
-          {hasVideo ? "+ Add Videos" : "Import Videos"}
+          {hasVideo ? "+ Add Media" : "Import Media"}
         </button>
         <button
           className="nav-btn audio-btn"
@@ -28,6 +30,12 @@ export default function Header({
           title="Import audio to the selected track"
         >
           {hasAudio ? "+ Add Audio" : "🎵 Import Audio"}
+        </button>
+        <button className="nav-btn" onClick={onSaveProject} title="Download this project with its media">
+          Save Project
+        </button>
+        <button className="nav-btn" onClick={onLoadProject} title="Open a saved VidAI project">
+          Load Project
         </button>
         <button className="nav-btn primary" onClick={onExport}>
           Export Video
