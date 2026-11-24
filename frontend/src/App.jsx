@@ -6,6 +6,7 @@ import Inspector from "./components/Inspector/Inspector";
 import Timeline from "./components/Timeline/Timeline";
 import ClipMenu from "./components/Timeline/ClipMenu";
 import MediaPanel from "./components/MediaPanel/MediaPanel";
+import AIAssistant from "./components/AIAssistant/AIAssistant";
 import ExportDialog from "./components/ExportDialog";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
@@ -34,6 +35,8 @@ export default function App() {
   const [exportProgress, setExportProgress] = useState(0);
   const [clipMenu, setClipMenu] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState("media");
+  const [captions, setCaptions] = useState([]);
+  const [activeVideoId, setActiveVideoId] = useState(null);
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
 
   const player = useVideoPlayer();
@@ -561,6 +564,7 @@ export default function App() {
           <div className="workspace-tabs" role="tablist" aria-label="Workspace panels">
             <button type="button" role="tab" id="workspace-media-tab" aria-selected={workspaceTab === "media"} aria-controls="workspace-media" onClick={() => setWorkspaceTab("media")}>Media</button>
             <button type="button" role="tab" id="workspace-edit-tab" aria-selected={workspaceTab === "edit"} aria-controls="workspace-edit" onClick={() => setWorkspaceTab("edit")}>Edit</button>
+            <button type="button" role="tab" id="workspace-ai-tab" aria-selected={workspaceTab === "ai"} aria-controls="workspace-ai" onClick={() => setWorkspaceTab("ai")}>✨ AI Assistant</button>
           </div>
           <div className="workspace-media" role="tabpanel" id="workspace-media" aria-labelledby="workspace-media-tab" hidden={workspaceTab !== "media"}>
             <MediaPanel clips={timeline.clips} selectedClipId={timeline.selectedClipId}
@@ -580,6 +584,15 @@ export default function App() {
                 onSeekClip={(...args) => player.seekTo(...args)}
               />
             ) : <div className="workspace-edit-empty"><strong>Select a clip to edit</strong><p>Click a video or audio clip on the timeline to see its tools here.</p></div>}
+          </div>
+          <div className="workspace-ai" role="tabpanel" id="workspace-ai" aria-labelledby="workspace-ai-tab" hidden={workspaceTab !== "ai"} style={{ height: "100%", display: workspaceTab === "ai" ? "flex" : "none", flexDirection: "column" }}>
+            <AIAssistant
+              selectedClip={selectedClip}
+              captions={captions}
+              setCaptions={setCaptions}
+              activeVideoId={activeVideoId}
+              setActiveVideoId={setActiveVideoId}
+            />
           </div>
         </aside>
         <div className="studio-main">
@@ -603,6 +616,7 @@ export default function App() {
             positionY={activeClip?.positionY ?? 50}
             imageOverlays={activeImageClips}
             hasClips={timeline.clips.length > 0}
+            captions={captions}
             onTogglePlay={handleTogglePlay}
             onImportClick={() => fileInputRef.current?.click()}
             gpuPreviewEnabled={true}

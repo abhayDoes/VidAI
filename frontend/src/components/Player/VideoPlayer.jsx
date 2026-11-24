@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import useWebGpuPreview from "../../hooks/useWebGpuPreview";
+import CaptionOverlay from "../Captions/CaptionOverlay";
 
 const ASPECT_CLASS = {
   "16:9": "aspect-16-9",
@@ -34,6 +35,7 @@ export default function VideoPlayer({
   trackMuted = false,
   trackVolume = 1,
   hasClips = false,
+  captions = [],
   onUpdateClip,
   onSelectClip,
   onBeginCanvasEdit,
@@ -224,6 +226,7 @@ export default function VideoPlayer({
               }}
             />
           ))}
+          <CaptionOverlay currentTime={currentTime} captions={captions} />
         </div>
       ) : (
         <div className={`empty-preview ${hasClips ? "empty-preview-gap" : ""}`} onClick={hasClips ? undefined : onImportClick}>
