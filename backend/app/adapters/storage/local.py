@@ -20,7 +20,8 @@ class LocalStorageService:
     async def save_file(self, filename: str, content: bytes, folder: str = "videos") -> str:
         """Persist bytes under storage/<folder>/<filename> and return relative path."""
         safe_name = Path(filename).name
-        rel_path = f"{folder.strip('/\\')}/{safe_name}" if folder else safe_name
+        clean_folder = folder.strip("/\\")
+        rel_path = f"{clean_folder}/{safe_name}" if clean_folder else safe_name
         dest_path = self._resolve_safe_path(rel_path)
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         with open(dest_path, "wb") as f:
