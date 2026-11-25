@@ -519,6 +519,43 @@ export default function App() {
     setStatus("Cut segment removed; following clips rippled left");
   };
 
+  const handleApplyTimelineSegments = useCallback(
+    (segments) => {
+      if (!segments || segments.length === 0) return;
+      const baseClip = selectedClip || timeline.clips.find((c) => c.type === "video");
+      if (!baseClip) return;
+
+      let runningStart = 0;
+      const newClips = segments.map((seg, idx) => {
+        const dur = Math.max(0.01, seg.src_end - seg.src_start);
+        const clipObj = {
+          ...baseClip,
+          id: `seg_${idx}_${Date.now()}`,
+          name: `${baseClip.name || "Video"} [${seg.src_start.toFixed(1)}s - ${seg.src_end.toFixed(1)}s]`,
+          trackId: baseClip.trackId || 1,
+          start: runningStart,
+          duration: dur,
+          sourceStart: seg.src_start,
+          sourceDuration: dur,
+        };
+        runningStart += dur;
+        return clipObj;
+      });
+
+      timeline.setClips((prevClips) => {
+        const otherClips = prevClips.filter(
+          (c) => c.trackId !== (baseClip.trackId || 1) && c.type !== "video"
+        );
+        return [...newClips, ...otherClips];
+      });
+
+      player.setDuration(Math.max(60, runningStart + 5));
+      player.seekTo(0);
+      setStatus(`AI Timeline updated: ${segments.length} segment(s), total ${runningStart.toFixed(1)}s`);
+    },
+    [selectedClip, timeline, player]
+  );
+
   return (
     <div className="editor-container">
       <Header
@@ -592,6 +629,9 @@ export default function App() {
               setCaptions={setCaptions}
               activeVideoId={activeVideoId}
               setActiveVideoId={setActiveVideoId}
+              timeline={timeline}
+              player={player}
+              onApplyTimelineSegments={handleApplyTimelineSegments}
             />
           </div>
         </aside>

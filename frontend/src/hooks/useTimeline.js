@@ -61,6 +61,12 @@ export default function useTimeline({ videoDuration }) {
     setSelectedClipId(clip.id);
     setSelectedTrackId(clip.trackId);
   }, [edit]);
+  const setClips = useCallback((newClips) => {
+    edit((state) => ({
+      ...state,
+      clips: typeof newClips === "function" ? newClips(state.clips) : newClips,
+    }));
+  }, [edit]);
   const replaceProject = useCallback((project) => {
     const tracks = project.tracks?.length ? project.tracks : initial.tracks;
     const clips = project.clips || [];
@@ -155,7 +161,7 @@ export default function useTimeline({ videoDuration }) {
   }, [isSnapping, clips, markers]);
 
   return { tracks, clips, markers, selectedClipId, selectedTrackId, selectTrack, isSnapping, setIsSnapping,
-    timelineDuration: Math.max(videoDuration, 120), addClip, replaceProject, addTrack, toggleTrackLock, toggleTrackVisible,
+    timelineDuration: Math.max(videoDuration, 120), addClip, setClips, replaceProject, addTrack, toggleTrackLock, toggleTrackVisible,
     setTrackVolume, toggleTrackMute, splitClip, addMarker, deleteClip, updateClip, moveClipToTrack,
     selectClip, snapTime, undo, redo, beginHistoryGroup, startHistoryGroup, endHistoryGroup,
     canUndo: !history.group && history.past.length > 0, canRedo: !history.group && history.future.length > 0 };

@@ -1,16 +1,18 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+load_dotenv()
 
-DATABASE_URL = "postgresql://postgres:Abhay@89480@localhost/video_editor"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./video_editor.db")
 
-
-engine = create_engine(DATABASE_URL)
-
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
 Base = declarative_base()

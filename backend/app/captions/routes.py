@@ -111,7 +111,12 @@ async def get_video_status(video_id: str) -> Dict[str, Any]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Video '{video_id}' not found"
         )
-    return status_data
+    result = dict(status_data)
+    state = status_data.get("state")
+    # Backwards-compatible status field: "completed" when done, "failed" when failed
+    result["status"] = "completed" if state == "done" else ("failed" if state == "failed" else state)
+    result["stage"] = status_data.get("message") or state
+    return result
 
 
 @router.get("/{video_id}")

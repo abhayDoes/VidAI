@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +19,11 @@ from app.services.handlers import (
 from app.captions.routes import router as captions_router
 from app.captions.storage import recover_interrupted_jobs
 from app.captions.pipeline import start_pipeline_worker
+
+try:
+    from backend.routers.editor import router as editor_router
+except ImportError:
+    from routers.editor import router as editor_router
 
 
 @asynccontextmanager
@@ -73,6 +80,10 @@ app.include_router(api_router, prefix="/api")
 # Include Captions Pipeline routes (at /videos and /api/videos)
 app.include_router(captions_router, prefix="/videos")
 app.include_router(captions_router, prefix="/api/videos")
+
+# Include AI Editor Prompt & Render routes (at /videos and /api/videos)
+app.include_router(editor_router, prefix="/videos")
+app.include_router(editor_router, prefix="/api/videos")
 
 
 # WebSockets endpoint for live progress streaming

@@ -5,21 +5,28 @@ const API_BASE = "http://localhost:8000";
 
 export default function AIAssistant({
   selectedClip,
-  onApplyToTimeline,
+  timeline,
+  player,
+  onApplyTimelineSegments = () => {},
   captions = [],
   setCaptions = () => {},
   activeVideoId,
-  setActiveVideoId = () => {}
+  setActiveVideoId = () => {},
 }) {
   const [prompt, setPrompt] = useState("");
-  const [videoRecord, setVideoRecord] = useState(null);
-  const [analysis, setAnalysis] = useState(null);
-  const [chatHistory, setChatHistory] = useState([]);
-  const [activeJob, setActiveJob] = useState(null); // { type, progress, stage, status }
-  const [previewOutput, setPreviewOutput] = useState(null);
-  const [finalOutput, setFinalOutput] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSendingPrompt, setIsSendingPrompt] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [candidatePlan, setCandidatePlan] = useState(null); // { plan_id, operations, message, resulting_timeline }
+  const [isPreviewingPlan, setIsPreviewingPlan] = useState(false);
+
+  // Active backend timeline state
+  const [backendTimeline, setBackendTimeline] = useState(null); // { video_id, source_duration, total_duration, version, segments }
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
+
+  // Render job state
+  const [renderJob, setRenderJob] = useState(null); // { job_id, status, progress, error, output_url }
+  const [isStartingRender, setIsStartingRender] = useState(false);
+  const renderPollRef = useRef(null);
 
   // Captions state
   const [captionProgress, setCaptionProgress] = useState(null);
@@ -29,15 +36,232 @@ export default function AIAssistant({
   const captionPollRef = useRef(null);
   const captionFileRef = useRef(null);
 
-  const wsRef = useRef(null);
-  const pollIntervalRef = useRef(null);
+  // Fetch active timeline and captions whenever activeVideoId changes
+  useEffect(() => {
+    if (activeVideoId) {
+      fetchTimeline(activeVideoId);
+      fetchCaptions(activeVideoId);
+    }
+  }, [activeVideoId]);
 
+  // Clean up polling intervals on unmount
   useEffect(() => {
     return () => {
+      if (renderPollRef.current) clearInterval(renderPollRef.current);
       if (captionPollRef.current) clearInterval(captionPollRef.current);
     };
   }, []);
 
+  const fetchTimeline = async (videoId) => {
+    setIsLoadingTimeline(true);
+    try {
+      const res = await fetch(`${API_BASE}/videos/${videoId}/timeline`);
+      if (res.ok) {
+        const data = await res.json();
+        setBackendTimeline(data);
+        if (data.segments && data.segments.length > 0) {
+          onApplyTimelineSegments(data.segments);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load timeline:", e);
+    } finally {
+      setIsLoadingTimeline(false);
+    }
+  };
+
+  // 1. Generate editing plan from natural language prompt
+  const handleGeneratePlan = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPrompt = prompt.trim();
+    if (!cleanPrompt || !activeVideoId || isPlanning) return;
+
+    setIsPlanning(true);
+    setPlanError("");
+    setCandidatePlan(null);
+    setIsPreviewingPlan(false);
+
+    try {
+      const res = await fetch(`${API_BASE}/videos/${activeVideoId}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: cleanPrompt }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const errDetail = data.detail;
+        if (typeof errDetail === "object" && errDetail.errors) {
+          setPlanError(errDetail.errors.join(", "));
+        } else {
+          setPlanError(errDetail || "Failed to generate plan");
+        }
+        return;
+      }
+
+      setCandidatePlan(data);
+      // Auto-preview candidate segments in timeline preview
+      if (data.resulting_timeline?.segments) {
+        setIsPreviewingPlan(true);
+        onApplyTimelineSegments(data.resulting_timeline.segments);
+      }
+    } catch (err) {
+      setPlanError(`Network error: ${err.message}`);
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  // 2. Approve candidate plan
+  const handleApprovePlan = async () => {
+    if (!candidatePlan || !activeVideoId) return;
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/videos/${activeVideoId}/plan/${candidatePlan.plan_id}/approve`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        setPlanError(err.detail || "Failed to approve plan");
+        return;
+      }
+      const newTimeline = await res.json();
+      setBackendTimeline(newTimeline);
+      onApplyTimelineSegments(newTimeline.segments);
+      setCandidatePlan(null);
+      setIsPreviewingPlan(false);
+      setPrompt("");
+    } catch (err) {
+      setPlanError(`Approval error: ${err.message}`);
+    }
+  };
+
+  // 3. Reject candidate plan
+  const handleRejectPlan = async () => {
+    if (!candidatePlan || !activeVideoId) return;
+
+    try {
+      await fetch(
+        `${API_BASE}/videos/${activeVideoId}/plan/${candidatePlan.plan_id}/reject`,
+        { method: "POST" }
+      );
+    } catch (err) {
+      console.warn("Reject request notice:", err);
+    } finally {
+      // Revert preview back to active timeline
+      if (backendTimeline?.segments) {
+        onApplyTimelineSegments(backendTimeline.segments);
+      }
+      setCandidatePlan(null);
+      setIsPreviewingPlan(false);
+    }
+  };
+
+  // 4. Undo last timeline version
+  const handleUndo = async () => {
+    if (!activeVideoId) return;
+    try {
+      const res = await fetch(`${API_BASE}/videos/${activeVideoId}/timeline/undo`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setPlanError(err.detail || "Undo failed");
+        return;
+      }
+      const reverted = await res.json();
+      setBackendTimeline(reverted);
+      onApplyTimelineSegments(reverted.segments);
+      setCandidatePlan(null);
+      setIsPreviewingPlan(false);
+    } catch (err) {
+      setPlanError(`Undo error: ${err.message}`);
+    }
+  };
+
+  // 5. Reset timeline to full original video
+  const handleReset = async () => {
+    if (!activeVideoId) return;
+    setPrompt("reset");
+    setIsPlanning(true);
+    setPlanError("");
+    try {
+      const res = await fetch(`${API_BASE}/videos/${activeVideoId}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "reset timeline to original" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.plan_id) {
+        const appr = await fetch(
+          `${API_BASE}/videos/${activeVideoId}/plan/${data.plan_id}/approve`,
+          { method: "POST" }
+        );
+        if (appr.ok) {
+          const resetTl = await appr.json();
+          setBackendTimeline(resetTl);
+          onApplyTimelineSegments(resetTl.segments);
+          setCandidatePlan(null);
+          setIsPreviewingPlan(false);
+          setPrompt("");
+        }
+      }
+    } catch (err) {
+      setPlanError(`Reset error: ${err.message}`);
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  // 6. Start Render & Poll Progress
+  const handleStartRender = async () => {
+    if (!activeVideoId || isStartingRender) return;
+
+    setIsStartingRender(true);
+    setPlanError("");
+    setRenderJob({ status: "queued", progress: 0 });
+
+    try {
+      const res = await fetch(`${API_BASE}/videos/${activeVideoId}/render`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPlanError(data.detail || "Failed to start render");
+        setRenderJob(null);
+        return;
+      }
+
+      const jobId = data.job_id;
+      setRenderJob({ job_id: jobId, status: "queued", progress: 0 });
+
+      // Poll render progress
+      if (renderPollRef.current) clearInterval(renderPollRef.current);
+      renderPollRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`${API_BASE}/videos/${activeVideoId}/render/${jobId}`);
+          if (!pollRes.ok) return;
+          const job = await pollRes.json();
+          setRenderJob(job);
+
+          if (job.status === "done" || job.status === "failed") {
+            clearInterval(renderPollRef.current);
+            renderPollRef.current = null;
+          }
+        } catch (e) {
+          console.error("Render poll error:", e);
+        }
+      }, 1000);
+    } catch (err) {
+      setPlanError(`Render trigger error: ${err.message}`);
+      setRenderJob(null);
+    } finally {
+      setIsStartingRender(false);
+    }
+  };
+
+  // 7. Generate Captions
   const handleGenerateCaptions = (file) => {
     const targetFile = file || selectedClip?.file;
     if (!targetFile) {
@@ -58,8 +282,7 @@ export default function AIAssistant({
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        setCaptionProgress(pct);
+        setCaptionProgress(Math.round((e.loaded / e.total) * 100));
       }
     };
 
@@ -101,16 +324,25 @@ export default function AIAssistant({
         const res = await fetch(`${API_BASE}/videos/${videoId}/status`);
         if (!res.ok) return;
         const data = await res.json();
+        const progress = data.progress != null ? Math.round(data.progress) : 0;
+        setCaptionProgress(progress);
+        setCaptionStage(data.message || data.stage || data.state || "Processing audio...");
 
-        setCaptionProgress(Math.round(data.progress || 0));
-        setCaptionStage(data.message || data.state);
+        const isDone =
+          data.state === "done" ||
+          data.status === "completed" ||
+          data.status === "done" ||
+          (progress >= 100 && (data.state === "done" || data.status === "completed"));
 
-        if (data.state === "done") {
+        const isFailed = data.state === "failed" || data.status === "failed";
+
+        if (isDone) {
           clearInterval(captionPollRef.current);
           captionPollRef.current = null;
           setIsGeneratingCaptions(false);
-          fetchCaptions(videoId);
-        } else if (data.state === "failed") {
+          await fetchCaptions(videoId);
+          await fetchTimeline(videoId);
+        } else if (isFailed) {
           clearInterval(captionPollRef.current);
           captionPollRef.current = null;
           setIsGeneratingCaptions(false);
@@ -119,323 +351,185 @@ export default function AIAssistant({
       } catch (err) {
         console.error("Caption polling error:", err);
       }
-    }, 1500);
+    }, 1200);
   };
 
   const fetchCaptions = async (videoId) => {
     try {
       const res = await fetch(`${API_BASE}/videos/${videoId}/captions`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data && data.captions) {
-        setCaptions(data.captions);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.captions && setCaptions) {
+          setCaptions(data.captions);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch captions:", e);
     }
   };
 
-  // Setup WebSocket connection for live progress
-  useEffect(() => {
-    const wsUrl = `ws://localhost:8000/ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "job_progress") {
-          setActiveJob({
-            jobId: data.job_id,
-            jobType: data.job_type,
-            status: data.status,
-            progress: data.progress,
-            stage: data.stage,
-            result: data.result,
-            error: data.error,
-          });
-
-          if (data.status === "completed" && data.result) {
-            if (data.job_type === "preview") {
-              setPreviewOutput(data.result);
-            } else if (data.job_type === "render") {
-              setFinalOutput(data.result);
-            } else if (data.job_type === "analysis") {
-              setAnalysis(data.result);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("WebSocket message parse error:", err);
-      }
-    };
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, []);
-
-  // When a video file is available, upload it to the backend to initialize analysis
-  const handleUploadToBackend = async (file) => {
-    if (!file) return;
-    setIsUploading(true);
-    setActiveJob({ status: "running", progress: 20, stage: "Uploading video to backend..." });
-
-    try {
-      const formData = new FormData();
-      formData.append("video", file);
-
-      const resp = await fetch(`${API_BASE}/api/videos/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!resp.ok) throw new Error("Upload failed");
-      const data = await resp.json();
-      setVideoRecord(data);
-      setActiveJob(null);
-
-      // Trigger automatic parallel analysis
-      triggerAnalysis(data.video_id);
-    } catch (err) {
-      console.error(err);
-      setActiveJob({ status: "failed", progress: 0, stage: "Upload failed", error: err.message });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const triggerAnalysis = async (videoId) => {
-    try {
-      setActiveJob({ status: "running", progress: 10, stage: "Starting parallel analysis..." });
-      const resp = await fetch(`${API_BASE}/api/videos/${videoId}/analyze`, {
-        method: "POST",
-      });
-      const data = await resp.json();
-      if (data.cached && data.data) {
-        setAnalysis(data.data);
-        setActiveJob(null);
-      } else if (data.job_id) {
-        pollJob(data.job_id, "analysis");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const pollJob = (jobId, expectedType) => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-
-    pollIntervalRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
-        if (!res.ok) return;
-        const job = await res.json();
-        
-        const rawRes = job.result;
-        const parsedRes = typeof rawRes === "string" ? (() => { try { return JSON.parse(rawRes); } catch { return rawRes; } })() : rawRes;
-
-        setActiveJob({
-          jobId: job.id,
-          jobType: job.job_type,
-          status: job.status,
-          progress: job.progress,
-          stage: job.stage,
-          result: parsedRes,
-          error: job.error,
-        });
-
-        if (job.status === "completed") {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-          if (expectedType === "preview" && parsedRes) {
-            setPreviewOutput(parsedRes);
-          } else if (expectedType === "render" && parsedRes) {
-            setFinalOutput(parsedRes);
-          } else if (expectedType === "analysis") {
-            if (parsedRes) setAnalysis(parsedRes);
-            setActiveJob(null);
-          }
-        } else if (job.status === "failed") {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-        }
-      } catch (e) {
-        console.error("Job poll error:", e);
-      }
-    }, 1200);
-  };
-
-  const handleSendPrompt = async (promptText) => {
-    const text = promptText || prompt;
-    if (!text.trim() || !videoRecord || isSendingPrompt) return;
-
-    setIsSendingPrompt(true);
-    const userMsg = { role: "user", content: text };
-    setChatHistory((prev) => [...prev, userMsg]);
-    setPrompt("");
-    setPreviewOutput(null);
-    setFinalOutput(null);
-
-    setActiveJob({ status: "running", progress: 15, stage: "LangGraph Agent planning Path A execution..." });
-
-    try {
-      const resp = await fetch(`${API_BASE}/api/agent/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: videoRecord.project_id,
-          video_id: videoRecord.video_id,
-          prompt: text,
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Agent request failed");
-      const data = await resp.json();
-
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "agent",
-          route: data.route,
-          content: data.explanation,
-          plan: data.plan,
-          errors: data.validation_errors,
-        },
-      ]);
-
-      if (data.preview_job_id) {
-        pollJob(data.preview_job_id, "preview");
-      } else {
-        setActiveJob(null);
-      }
-    } catch (err) {
-      console.error(err);
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "agent", content: `Error: ${err.message}` },
-      ]);
-      setActiveJob(null);
-    } finally {
-      setIsSendingPrompt(false);
-    }
-  };
-
-  const handleApproveRender = async () => {
-    if (!videoRecord) return;
-    const lastAgentMsg = [...chatHistory].reverse().find((m) => m.role === "agent" && m.plan?.length);
-    if (!lastAgentMsg) return;
-
-    setActiveJob({ status: "running", progress: 5, stage: "Queuing full-quality render..." });
-
-    try {
-      const resp = await fetch(`${API_BASE}/api/renders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: videoRecord.project_id,
-          video_id: videoRecord.video_id,
-          plan: lastAgentMsg.plan,
-        }),
-      });
-      if (!resp.ok) throw new Error("Render trigger failed");
-      const data = await resp.json();
-      if (data.job_id) {
-        pollJob(data.job_id, "render");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const isRenderRunning = renderJob && (renderJob.status === "running" || renderJob.status === "queued");
 
   return (
     <div className="ai-assistant">
+      {/* Top Header with Compact Undo/Reset */}
       <div className="ai-header">
-        <h3>
-          <span>✨</span> VidAI Assistant
-          <span className="ai-badge">Path A Fast Engine</span>
-        </h3>
-        <p>Natural language video editing powered by LangGraph & FFmpeg</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3>
+            <span>✨</span> AI Prompt Editor
+          </h3>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              type="button"
+              className="ai-btn-icon"
+              onClick={handleUndo}
+              disabled={isPlanning || isRenderRunning || (backendTimeline?.version || 1) <= 1}
+              title="Undo last edit"
+            >
+              ↩ Undo
+            </button>
+            <button
+              type="button"
+              className="ai-btn-icon"
+              onClick={handleReset}
+              disabled={isPlanning || isRenderRunning}
+              title="Reset timeline to original"
+            >
+              ↺ Reset
+            </button>
+          </div>
+        </div>
+        <p>Edit videos with natural language prompts (English, Hindi, Hinglish)</p>
       </div>
 
-      {/* Video Status Card */}
-      {!videoRecord ? (
-        <div className="ai-video-card">
-          <h4>No Video Synced with Backend</h4>
-          <p style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
-            {selectedClip?.file
-              ? `Selected clip: ${selectedClip.name}`
-              : "Select a clip from the timeline or upload one to edit with AI."}
-          </p>
-          {selectedClip?.file && (
-            <button
-              className="ai-btn-approve"
-              style={{ marginTop: 8 }}
-              disabled={isUploading}
-              onClick={() => handleUploadToBackend(selectedClip.file)}
-            >
-              {isUploading ? "Uploading..." : "Sync & Analyze This Video"}
-            </button>
-          )}
+      {/* Prompt Box with Small Arrow Button */}
+      <form onSubmit={handleGeneratePlan} className="ai-prompt-box">
+        <label style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 500 }}>
+          Natural Language Prompt:
+        </label>
+        <div className="ai-input-wrapper">
+          <input
+            type="text"
+            className="ai-prompt-input"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={
+              isRenderRunning
+                ? "Rendering in progress..."
+                : "e.g. cut the last 1 min, pehle 10s hata do"
+            }
+            disabled={!activeVideoId || isPlanning || isRenderRunning}
+          />
+          <button
+            type="submit"
+            className="ai-btn-arrow"
+            disabled={!activeVideoId || !prompt.trim() || isPlanning || isRenderRunning}
+            title="Generate Edit"
+          >
+            {isPlanning ? (
+              <span className="ai-spinner-small" />
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            )}
+          </button>
         </div>
-      ) : (
-        <div className="ai-video-card">
+
+        {planError && <div className="ai-error-banner">{planError}</div>}
+
+        {/* Quick Example Chips */}
+        <div className="ai-prompt-chips">
+          <span
+            className="ai-chip"
+            onClick={() => setPrompt("cut the last 1 min")}
+          >
+            ✂ cut last 1 min
+          </span>
+          <span
+            className="ai-chip"
+            onClick={() => setPrompt("pehle 10 second hata do")}
+          >
+            ✂ pehle 10s hata do
+          </span>
+          <span
+            className="ai-chip"
+            onClick={() => setPrompt("keep only from 0:10 to 0:45")}
+          >
+            ⏱ keep 0:10 to 0:45
+          </span>
+          <span
+            className="ai-chip"
+            onClick={() => setPrompt("cut the part from 20s to 25s")}
+          >
+            ✂ cut 20s to 25s
+          </span>
+        </div>
+      </form>
+
+      {/* Proposed Plan Card (Preview without committing) */}
+      {candidatePlan && (
+        <div className="ai-plan-card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>{videoRecord.filename}</strong>
-            <span className="ai-badge" style={{ backgroundColor: "#065f46", color: "#34d399" }}>
-              Ready for AI Edits
+            <strong style={{ fontSize: "0.85rem", color: "#f8fafc" }}>
+              💡 Proposed AI Edit Plan
+            </strong>
+            <span className="ai-badge" style={{ backgroundColor: "#854d0e", color: "#fde047" }}>
+              Uncommitted Preview
             </span>
-          </div>
-          <div className="ai-video-meta">
-            <span className="ai-meta-tag">{videoRecord.duration?.toFixed(1)}s</span>
-            <span className="ai-meta-tag">
-              {videoRecord.width}x{videoRecord.height}
-            </span>
-            <span className="ai-meta-tag">{videoRecord.fps} fps</span>
           </div>
 
-          {analysis && (
-            <div className="ai-analysis-box">
-              <div><strong>Scenes Detected:</strong> {analysis.scenes?.length || 0}</div>
-              <div><strong>Transcript:</strong> {analysis.transcript?.length || 0} lines</div>
-              {analysis.visual_tags?.length > 0 && (
-                <div style={{ marginTop: 4 }}>
-                  <strong>Tags:</strong>{" "}
-                  {analysis.visual_tags.flatMap((t) => t.tags).slice(0, 5).join(", ")}
-                </div>
-              )}
+          <p className="ai-plan-message">{candidatePlan.message}</p>
+
+          <div className="ai-operations-list">
+            {candidatePlan.operations.map((op, idx) => (
+              <div key={idx} className="ai-op-item">
+                <span className="ai-op-tag">{op.op}</span>
+                <span className="ai-op-desc">{op.description || JSON.stringify(op.params)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Candidate resulting timeline stats */}
+          {candidatePlan.resulting_timeline && (
+            <div className="ai-diff-stat">
+              <span>Current: {backendTimeline?.total_duration?.toFixed(1) || "--"}s</span>
+              <span>➔</span>
+              <strong style={{ color: "#38bdf8" }}>
+                New: {candidatePlan.resulting_timeline.segments?.reduce(
+                  (acc, s) => acc + (s.src_end - s.src_start), 0
+                ).toFixed(1)}s
+              </strong>
             </div>
           )}
+
+          <div className="ai-plan-actions">
+            <button
+              type="button"
+              className="ai-btn-approve"
+              onClick={handleApprovePlan}
+              disabled={isRenderRunning}
+            >
+              ✓ Apply Edit
+            </button>
+            <button
+              type="button"
+              className="ai-btn-reject"
+              onClick={handleRejectPlan}
+              disabled={isRenderRunning}
+            >
+              ✗ Discard
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Active Job Progress */}
-      {activeJob && activeJob.status === "running" && (
-        <div className="ai-video-card" style={{ borderColor: "#6366f1" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem" }}>
-            <span>{activeJob.stage}</span>
-            <span>{Math.round(activeJob.progress)}%</span>
-          </div>
-          <div className="ai-progress-bar">
-            <div className="ai-progress-fill" style={{ width: `${activeJob.progress}%` }}></div>
-          </div>
-        </div>
-      )}
-
-      {/* Offline AI Captions Card */}
-      <div className="ai-caption-card">
+      {/* Separate Subtitles Section with Dedicated Button */}
+      <div className="ai-subtitles-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <strong style={{ fontSize: "0.85rem", color: "#e2e8f0", display: "flex", alignItems: "center", gap: "6px" }}>
-            <span>💬</span> Offline AI Captions
+            <span>💬</span> Subtitles & Transcript
           </strong>
           <span className="ai-badge" style={{ backgroundColor: "#1e1b4b", color: "#a5b4fc" }}>
             faster-whisper CPU
@@ -453,227 +547,106 @@ export default function AIAssistant({
         />
 
         {isGeneratingCaptions ? (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#94a3b8", marginBottom: 4 }}>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#94a3b8" }}>
               <span>{captionStage}</span>
               <span>{captionProgress || 0}%</span>
             </div>
             <div className="ai-progress-bar">
-              <div className="ai-progress-fill" style={{ width: `${captionProgress || 10}%` }}></div>
-            </div>
-          </div>
-        ) : captions && captions.length > 0 ? (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ fontSize: "0.78rem", color: "#34d399", fontWeight: 500 }}>
-              ✅ Captions Active ({captions.length} lines)
-            </div>
-            <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: 2 }}>
-              Synchronized live on preview player
-            </div>
-
-            <div className="ai-caption-btn-group">
-              {activeVideoId && (
-                <>
-                  <a
-                    href={`${API_BASE}/videos/${activeVideoId}/captions.srt`}
-                    download="captions.srt"
-                    className="ai-caption-btn"
-                  >
-                    ⬇️ Download SRT
-                  </a>
-                  <a
-                    href={`${API_BASE}/videos/${activeVideoId}/captions.vtt`}
-                    download="captions.vtt"
-                    className="ai-caption-btn"
-                  >
-                    ⬇️ Download VTT
-                  </a>
-                  <a
-                    href={`${API_BASE}/videos/${activeVideoId}/export-burned`}
-                    download="video_with_captions.mp4"
-                    className="ai-caption-btn burned"
-                  >
-                    🎬 Download Video with Captions (MP4)
-                  </a>
-                </>
-              )}
-              {selectedClip?.file && (
-                <button
-                  type="button"
-                  className="ai-caption-btn"
-                  onClick={() => handleGenerateCaptions(selectedClip.file)}
-                >
-                  🔄 Regenerate
-                </button>
-              )}
+              <div className="ai-progress-fill" style={{ width: `${captionProgress || 5}%` }}></div>
             </div>
           </div>
         ) : (
-          <div style={{ marginTop: 4 }}>
-            <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "0 0 8px 0" }}>
-              Generate offline timestamped subtitles for this video without cloud APIs.
-            </p>
-            {selectedClip?.file ? (
-              <button
-                type="button"
-                className="ai-caption-btn primary"
-                style={{ width: "100%", justifyContent: "center" }}
-                onClick={() => handleGenerateCaptions(selectedClip.file)}
-              >
-                ⚡ Generate Captions
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="ai-caption-btn primary"
-                style={{ width: "100%", justifyContent: "center" }}
-                onClick={() => captionFileRef.current?.click()}
-              >
-                📁 Upload Video for Captions
-              </button>
-            )}
-          </div>
-        )}
-
-        {captionError && (
-          <div style={{ fontSize: "0.75rem", color: "#f87171", marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Error: {captionError}</span>
-            {selectedClip?.file && (
-              <button
-                type="button"
-                className="ai-chip"
-                style={{ background: "#dc2626", color: "#fff", borderColor: "#ef4444" }}
-                onClick={() => handleGenerateCaptions(selectedClip.file)}
-              >
-                Retry
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Quick Prompt Chips */}
-      {videoRecord && (
-        <div>
-          <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Quick Editing Prompts:</span>
-          <div className="ai-chips">
-            <button className="ai-chip" onClick={() => handleSendPrompt("Reframe to 9:16 for Reels/Shorts")}>
-              📱 Reframe 9:16
-            </button>
-            <button className="ai-chip" onClick={() => handleSendPrompt("Trim the first 15 seconds")}>
-              ✂️ Trim First 15s
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
             <button
-              className="ai-chip"
-              onClick={() => {
-                if (selectedClip?.file) {
-                  handleGenerateCaptions(selectedClip.file);
-                } else {
-                  handleSendPrompt("Add subtitles to the video");
-                }
-              }}
+              type="button"
+              className="ai-btn-subtitles-main"
+              onClick={() => handleGenerateCaptions()}
+              disabled={isGeneratingCaptions}
             >
-              💬 Add Subtitles
+              <span>🎙️</span> {captions?.length ? "Regenerate Subtitles" : "Generate Subtitles"}
             </button>
-            <button className="ai-chip" onClick={() => handleSendPrompt("Speed up by 1.5x")}>
-              ⚡ 1.5x Speed
-            </button>
-            <button className="ai-chip" onClick={() => handleSendPrompt("Mute video audio")}>
-              🔇 Mute Audio
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* Low-Resolution Preview & Approval Section (Architecture Spec) */}
-      {previewOutput && (
-        <div className="ai-preview-section">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#a5b4fc" }}>
-              ⚡ Low-Resolution Fast Preview
-            </span>
-            <span className="ai-badge" style={{ backgroundColor: "#312e81" }}>
-              480p Preview
-            </span>
-          </div>
-          <video
-            className="ai-preview-video"
-            src={`${API_BASE}${previewOutput.url}`}
-            controls
-            autoPlay
-            loop
-          />
-          <div className="ai-preview-actions">
-            <button className="ai-btn-approve" onClick={handleApproveRender}>
-              ✅ Approve & Full Render
-            </button>
-            <button className="ai-btn-refine" onClick={() => setPreviewOutput(null)}>
-              🔄 Refine Prompt
-            </button>
-          </div>
-        </div>
-      )}
+            {captions?.length > 0 && (
+              <div style={{ fontSize: "0.75rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>✓</span> {captions.length} subtitles generated & synced
+              </div>
+            )}
 
-      {/* Final Render Download Card */}
-      {finalOutput && (
-        <div className="ai-video-card" style={{ borderColor: "#10b981", backgroundColor: "#064e3b" }}>
-          <h4 style={{ margin: "0 0 6px 0", color: "#a7f3d0" }}>🎉 Full-Quality Render Ready!</h4>
-          <p style={{ margin: 0, fontSize: "0.8rem", color: "#d1fae5" }}>
-            Rendered high-quality MP4 file.
-          </p>
-          <a
-            href={`${API_BASE}${finalOutput.url}`}
-            download={finalOutput.filename}
-            className="ai-btn-approve"
-            style={{ display: "inline-block", marginTop: 10, textAlign: "center", textDecoration: "none" }}
-            target="_blank"
-            rel="noreferrer"
-          >
-            ⬇️ Download Full-Quality Video
-          </a>
-        </div>
-      )}
-
-      {/* Chat Messages */}
-      <div className="ai-chat-history">
-        {chatHistory.map((msg, index) => (
-          <div key={index} className={`ai-message ${msg.role}`}>
-            <div>{msg.content}</div>
-            {msg.plan && msg.plan.length > 0 && (
-              <ol className="ai-plan-steps">
-                {msg.plan.map((step, idx) => (
-                  <li key={idx}>
-                    <strong>{step.tool}</strong>: {JSON.stringify(step.params)}
-                  </li>
-                ))}
-              </ol>
+            {activeVideoId && captions?.length > 0 && (
+              <div className="ai-caption-btn-group">
+                <a
+                  href={`${API_BASE}/videos/${activeVideoId}/captions.srt`}
+                  download="captions.srt"
+                  className="ai-caption-btn"
+                >
+                  ⬇ Download SRT
+                </a>
+                <a
+                  href={`${API_BASE}/videos/${activeVideoId}/captions.vtt`}
+                  download="captions.vtt"
+                  className="ai-caption-btn"
+                >
+                  ⬇ Download VTT
+                </a>
+              </div>
             )}
           </div>
-        ))}
+        )}
+
+        {captionError && <div className="ai-error-banner">{captionError}</div>}
       </div>
 
-      {/* Prompt Input */}
-      <div className="ai-prompt-input-container">
-        <input
-          type="text"
-          className="ai-prompt-input"
-          placeholder={videoRecord ? "E.g. Cut the first 10s, resize to 9:16 and add subtitles" : "Sync a video above first..."}
-          value={prompt}
-          disabled={!videoRecord || isSendingPrompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !isSendingPrompt) handleSendPrompt();
-          }}
-        />
+      {/* Export Final Video at the Very Bottom */}
+      <div className="ai-export-footer">
+        {renderJob && (
+          <div className={`ai-render-card status-${renderJob.status}`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                {renderJob.status === "done"
+                  ? "✓ Render Complete"
+                  : renderJob.status === "failed"
+                  ? "✗ Render Failed"
+                  : "⚡ Rendering Final MP4..."}
+              </span>
+              <span style={{ fontSize: "0.8rem", color: "#a5b4fc" }}>
+                {Math.round(renderJob.progress || 0)}%
+              </span>
+            </div>
+
+            {renderJob.status !== "done" && renderJob.status !== "failed" && (
+              <div className="ai-progress-bar">
+                <div className="ai-progress-fill" style={{ width: `${renderJob.progress || 5}%` }}></div>
+              </div>
+            )}
+
+            {renderJob.status === "done" && (
+              <a
+                href={`${API_BASE}/videos/${activeVideoId}/render/${renderJob.job_id}/download`}
+                className="ai-btn-download"
+                download
+              >
+                📥 Download Final Video (.mp4)
+              </a>
+            )}
+
+            {renderJob.error && (
+              <div className="ai-error-banner" style={{ marginTop: 6 }}>
+                {renderJob.error}
+              </div>
+            )}
+          </div>
+        )}
+
         <button
-          className="ai-btn-send"
-          disabled={!videoRecord || !prompt.trim() || isSendingPrompt}
-          onClick={() => handleSendPrompt()}
+          type="button"
+          className="ai-btn-export-final"
+          onClick={handleStartRender}
+          disabled={!activeVideoId || isPlanning || isRenderRunning}
         >
-          {isSendingPrompt ? "Thinking..." : "Send"}
+          {isRenderRunning ? "⚡ Rendering Video..." : "⚡ Export Final Video"}
         </button>
       </div>
     </div>
   );
 }
-

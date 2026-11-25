@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # Pluggable Storage
     STORAGE_BACKEND: str = "local"  # "local" or "r2"
     STORAGE_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "storage")
+    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos")
 
     # Cloudflare R2 Credentials (for future plug-in)
     R2_ACCOUNT_ID: Optional[str] = None

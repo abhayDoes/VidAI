@@ -177,3 +177,87 @@ Use any 30–60 second video containing speech to verify end-to-end functionalit
 6. **Edge Case Verification**:
    - Upload a silent video (or video with audio stripped): confirm it finishes with status `done`, message `"No audio track found"`, and empty captions list.
    - Attempt to upload an invalid format (e.g. `.txt`): confirm it shows a 400 rejection error without crashing.
+
+
+---
+
+## Phase 1: Natural Language Prompt Editing Layer
+
+VidAI Studio features an AI prompt layer allowing users to edit videos with conversational natural language in English, Hindi, or Hinglish (e.g. *"pehle 10 second hata do"*, *"keep only 0:10 to 0:45"*).
+
+### Key Architectural Safeguards:
+1. **Never Overwrites Original**: Edits live in a versioned `timeline.json` (`Segment { id, src_start, src_end }`).
+2. **LLM Never Writes Commands**: The LLM only picks operations from a fixed registry and supplies JSON parameters.
+3. **Strict Validation**: Every candidate plan is checked by a Pydantic validator for bounds, sequential duration validity, and non-empty output before preview.
+4. **Uncommitted Preview**: Proposed edits can be previewed seamlessly in the timeline player before applying.
+
+---
+
+### How to Run
+
+1. **Set Up Environment Variables**:
+   Copy the example file:
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+   Add your Google Gemini API key or configure Ollama:
+   ```env
+   # In backend/.env:
+   GEMINI_API_KEY=your_gemini_api_key_here
+   # Or for local zero-API offline mode:
+   # LLM_PROVIDER=ollama
+   # OLLAMA_HOST=http://localhost:11434
+   # OLLAMA_MODEL=qwen2.5:7b
+   ```
+
+2. **Start the FastAPI Backend**:
+   ```powershell
+   cd backend
+   $env:PYTHONPATH = ".;.."
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+
+3. **Start the Frontend Dev Server**:
+   ```powershell
+   cd frontend
+   npm run dev
+   ```
+   Open your browser to [http://localhost:5173](http://localhost:5173).
+
+---
+
+### How to Add a New Operation (Plugin Architecture)
+
+To add any new editing operation (e.g. `speed_adjust`, `silence_remove`, `zoom_in`), create a single file under `backend/editor/ops/`. You only need to touch **3 things**:
+
+```python
+# backend/editor/ops/my_operation.py
+from pydantic import BaseModel, Field
+from backend.editor.timeline import Timeline, Segment
+from backend.editor.ops.registry import register_operation, format_timestamp
+
+# 1. PARAMS MODEL: Define input schema and validation
+class MyOpParams(BaseModel):
+    speed: float = Field(gt=0.0, le=4.0, description="Playback speed multiplier")
+
+# 2. APPLY FUNCTION: Pure function that returns a NEW Timeline
+def apply_my_op(timeline: Timeline, params: MyOpParams) -> Timeline:
+    # Manipulate segments mathematically without touching the source video
+    return Timeline(
+        video_id=timeline.video_id,
+        source_duration=timeline.source_duration,
+        segments=timeline.segments,
+        version=timeline.version + 1,
+    )
+
+# 3. REGISTRATION: Register with description and human-readable UI summary
+@register_operation(
+    name="set_speed",
+    description="Adjust playback speed multiplier (between 0.1x and 4.0x).",
+    params_model=MyOpParams,
+    describe=lambda p: f"Set speed to {p.speed}x",
+)
+def registered_my_op(timeline: Timeline, params: MyOpParams) -> Timeline:
+    return apply_my_op(timeline, params)
+```
+Once registered, the LLM prompt generator, JSON schema validator, API endpoints, and UI will automatically support the new operation without rewriting any core logic!
