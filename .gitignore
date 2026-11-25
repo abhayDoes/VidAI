@@ -14,10 +14,10 @@ video_editor.db
 backend/video_editor.db
 
 # Uploaded / Generated Videos, Audio & Test Media
-data/
-backend/data/
-storage/
-backend/storage/
+/data/
+/backend/data/
+/storage/
+/backend/storage/
 *.mp4
 *.wav
 *.mp3

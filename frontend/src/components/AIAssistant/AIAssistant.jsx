@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { API_BASE } from "../../config/api";
 import "./AIAssistant.css";
-
-const API_BASE = "http://localhost:8000";
 
 export default function AIAssistant({
   selectedClip,

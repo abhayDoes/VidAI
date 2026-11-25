@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { API_BASE } from "../../config/api";
 import "./Captions.css";
-
-const API_BASE = "http://localhost:8000";
 
 const STAGE_LABELS = {
   uploaded: "Video uploaded, starting analysis...",

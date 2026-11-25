@@ -68,7 +68,7 @@ async def upload_video(file: UploadFile = File(...)) -> Dict[str, str]:
                     if dest_path.exists():
                         dest_path.unlink()
                     raise HTTPException(
-                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                        status_code=getattr(status, "HTTP_413_CONTENT_TOO_LARGE", 413),
                         detail=f"File exceeds maximum allowed size of {caption_settings.MAX_UPLOAD_MB}MB"
                     )
                 out_file.write(chunk)
@@ -211,7 +211,7 @@ async def stream_video_file(video_id: str, request: Request):
         parsed_range = _parse_range_header(range_header, file_size)
         if parsed_range is None:
             return JSONResponse(
-                status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
+                status_code=getattr(status, "HTTP_416_RANGE_NOT_SATISFIABLE", 416),
                 content={"detail": "Requested Range Not Satisfiable"},
                 headers={"Content-Range": f"bytes */{file_size}"}
             )
