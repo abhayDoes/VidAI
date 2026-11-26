@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # API Keys
     GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    ELEVENLABS_API_KEY: Optional[str] = None
 
     # Pluggable Database (absolute path to SQLite file, swappable to postgresql://)
     DATABASE_URL: str = f"sqlite:///{os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'video_editor.db')}"

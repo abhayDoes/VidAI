@@ -582,6 +582,38 @@ export default function App() {
     [selectedClip, timeline, player]
   );
 
+  const handleAddBackgroundMusic = useCallback(
+    ({ file, sourceUrl, duration, title }) => {
+      const videoTrackId = selectedClip?.trackId || timeline.tracks[0]?.id;
+      const audioTrack =
+        timeline.tracks.find((track) => !track.locked && track.id !== videoTrackId) ||
+        timeline.tracks.find((track) => !track.locked) ||
+        timeline.tracks[0];
+      if (!audioTrack) return;
+
+      const dur = Number(duration) > 0 ? Number(duration) : 15;
+      timeline.addClip({
+        id: `bgm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: "audio",
+        trackId: audioTrack.id,
+        file,
+        sourceUrl,
+        filename: file?.name || "ai-bgm.mp3",
+        title: title || "AI Background Music",
+        start: 0,
+        sourceStart: 0,
+        sourceMin: 0,
+        sourceMax: dur,
+        sourceDuration: dur,
+        duration: dur,
+        muted: false,
+        volume: 0.25,
+      });
+      setStatus("AI background music added to timeline audio track");
+    },
+    [selectedClip, timeline]
+  );
+
   if (showLanding) {
     return (
       <LandingPage
@@ -672,6 +704,7 @@ export default function App() {
               timeline={timeline}
               player={player}
               onApplyTimelineSegments={handleApplyTimelineSegments}
+              onAddBackgroundMusic={handleAddBackgroundMusic}
             />
           </div>
         </aside>

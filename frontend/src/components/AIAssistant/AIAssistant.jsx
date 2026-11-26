@@ -7,6 +7,7 @@ export default function AIAssistant({
   timeline,
   player,
   onApplyTimelineSegments = () => {},
+  onAddBackgroundMusic = () => {},
   captions = [],
   setCaptions = () => {},
   activeVideoId,
@@ -39,6 +40,11 @@ export default function AIAssistant({
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
   const captionPollRef = useRef(null);
   const captionFileRef = useRef(null);
+
+  // Background music (Gemini + ElevenLabs) state
+  const [isGeneratingBgm, setIsGeneratingBgm] = useState(false);
+  const [bgmResult, setBgmResult] = useState(null);
+  const [bgmError, setBgmError] = useState("");
 
   // Fetch active timeline and captions whenever activeVideoId changes
   useEffect(() => {
@@ -100,11 +106,93 @@ export default function AIAssistant({
     return data.video_id;
   };
 
+  // Helper: detect background-music intent ONLY when user explicitly asks for it
+  const isBgmIntent = (text) => {
+    const lower = text.toLowerCase();
+    const keywords = [
+      "background music",
+      "bg music",
+      "bgm",
+      "soundtrack",
+      "theme music",
+      "add music",
+      "make music",
+      "generate music",
+      "create music",
+      "music lagao",
+      "music banao",
+      "music add",
+    ];
+    return keywords.some((kw) => lower.includes(kw));
+  };
+
+  // Generate background music via Gemini video analysis + ElevenLabs
+  const handleGenerateBgm = async (userPrompt) => {
+    if (isGeneratingBgm) return;
+    setIsGeneratingBgm(true);
+    setBgmError("");
+    setBgmResult(null);
+
+    try {
+      let targetVideoId = activeVideoId;
+      if (!targetVideoId) {
+        const localFile = getTimelineVideoFile();
+        if (!localFile) {
+          setBgmError("Import a video into the timeline first.");
+          return;
+        }
+        targetVideoId = await uploadVideoForAI(localFile);
+      }
+
+      const res = await fetch(`${API_BASE}/videos/${targetVideoId}/bgm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBgmError(data.detail || "Failed to generate background music");
+        return;
+      }
+
+      // Download MP3 blob so it works in-browser & with local FFmpeg.wasm export
+      const audioRes = await fetch(`${API_BASE}${data.url}`);
+      if (!audioRes.ok) throw new Error("Could not fetch generated music file.");
+      const blob = await audioRes.blob();
+      const file = new File([blob], data.filename || "ai-bgm.mp3", {
+        type: "audio/mpeg",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+
+      onAddBackgroundMusic({
+        file,
+        sourceUrl: objectUrl,
+        duration: data.duration,
+        title: `BGM (${data.mood || "AI"})`,
+      });
+
+      setBgmResult(data);
+    } catch (err) {
+      setBgmError(`BGM error: ${err.message}`);
+    } finally {
+      setIsGeneratingBgm(false);
+    }
+  };
+
   // 1. Generate editing plan from natural language prompt
   const handleGeneratePlan = async (e) => {
     if (e) e.preventDefault();
     const cleanPrompt = prompt.trim();
-    if (!cleanPrompt || isPlanning) return;
+    if (!cleanPrompt || isPlanning || isGeneratingBgm) return;
+
+    // ── Background Music intent (Gemini analysis + ElevenLabs) ────────────
+    if (isBgmIntent(cleanPrompt)) {
+      setPrompt("");
+      setPlanError("");
+      handleGenerateBgm(cleanPrompt);
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     // ── Subtitle / Caption intent ─────────────────────────────────────────
     if (isSubtitleIntent(cleanPrompt)) {
@@ -617,6 +705,37 @@ export default function AIAssistant({
           )}
 
           {captionError && <div className="ai-error-banner">{captionError}</div>}
+        </div>
+      )}
+
+      {/* Background Music (Gemini + ElevenLabs) progress / result */}
+      {(isGeneratingBgm || bgmResult || bgmError) && (
+        <div className="ai-subtitles-card">
+          {isGeneratingBgm ? (
+            <div style={{ fontSize: "0.78rem", color: "#cbd5e1", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span className="ai-spinner-small" />
+              <span>Analyzing video with Gemini &amp; composing music via ElevenLabs...</span>
+            </div>
+          ) : bgmResult ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ fontSize: "0.78rem", color: "#4ade80", fontWeight: 600 }}>
+                ✓ Background music added ({bgmResult.mood} · {bgmResult.genre})
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                {bgmResult.music_prompt}
+              </div>
+              <a
+                href={`${API_BASE}${bgmResult.url}`}
+                download={bgmResult.filename || "ai-bgm.mp3"}
+                className="ai-caption-btn"
+                style={{ alignSelf: "flex-start" }}
+              >
+                ⬇ Download BGM (.mp3)
+              </a>
+            </div>
+          ) : null}
+
+          {bgmError && <div className="ai-error-banner">{bgmError}</div>}
         </div>
       )}
 

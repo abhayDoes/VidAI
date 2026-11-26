@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -350,5 +351,55 @@ async def download_render_endpoint(
         path=str(file_path),
         media_type="video/mp4",
         filename=f"{video_id}_final.mp4",
+        headers={"Accept-Ranges": "bytes"},
+    )
+
+
+class BgmRequest(BaseModel):
+    prompt: str = Field(default="background music matching the video", max_length=1000)
+
+
+@router.post("/{video_id}/bgm")
+async def generate_bgm_endpoint(video_id: str, request: BgmRequest):
+    """Analyze the video with Gemini and generate matching background music via ElevenLabs."""
+    from backend.editor.bgm import generate_background_music
+
+    base_dir = _get_base_dir()
+    try:
+        result = await asyncio.to_thread(
+            generate_background_music,
+            video_id=video_id,
+            user_prompt=request.prompt.strip() or "background music matching the video",
+            base_dir=base_dir,
+        )
+        return result
+    except FileNotFoundError as ex:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ex))
+    except RuntimeError as ex:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(ex))
+    except Exception as ex:
+        logger.error(f"[Editor BGM] Failed for video_id={video_id}: {ex}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Background music generation failed: {ex}",
+        )
+
+
+@router.get("/{video_id}/bgm/{filename}")
+async def download_bgm_endpoint(video_id: str, filename: str):
+    """Serve a generated background music MP3 file."""
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.endswith(".mp3"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename.")
+
+    base_dir = _get_base_dir()
+    bgm_path = get_timeline_path(video_id, base_dir).parent / "bgm" / safe_name
+    if not bgm_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BGM file not found.")
+
+    return FileResponse(
+        path=str(bgm_path),
+        media_type="audio/mpeg",
+        filename=safe_name,
         headers={"Accept-Ranges": "bytes"},
     )

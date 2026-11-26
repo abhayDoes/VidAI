@@ -676,3 +676,160 @@
     display: none;
   }
 }
+
+
+/* =========================================================
+   Animations & Micro-Interactions
+   ========================================================= */
+@keyframes vlFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes vlFloatCard {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes vlPulseBadge {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(253, 224, 71, 0);
+  }
+}
+
+@keyframes vlWaveBounce {
+  0%, 100% {
+    transform: scaleY(0.72);
+  }
+  50% {
+    transform: scaleY(1.08);
+  }
+}
+
+@keyframes vlSilentBlink {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* Hero staggered entrance */
+.vl-eyebrow {
+  animation: vlFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.vl-hero-title {
+  animation: vlFadeUp 0.65s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.vl-hero-sub {
+  animation: vlFadeUp 0.65s 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.vl-hero-bar {
+  animation: vlFadeUp 0.65s 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.vl-hero-bar:focus-within {
+  box-shadow: 0 22px 48px rgba(255, 100, 45, 0.28);
+  transform: translateY(-2px);
+}
+
+.vl-hero-chips {
+  animation: vlFadeUp 0.65s 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.vl-hero-chips button {
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.vl-hero-chips button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 176, 136, 0.5);
+}
+
+.vl-hero-card {
+  animation: vlFadeUp 0.75s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both,
+             vlFloatCard 6s 1s ease-in-out infinite;
+}
+
+.vl-badge-preview {
+  animation: vlPulseBadge 2.2s ease-in-out infinite;
+}
+
+/* Animated waveform bars */
+.vl-wave.active {
+  transform-origin: bottom;
+  animation: vlWaveBounce 1.6s ease-in-out infinite;
+}
+
+.vl-wave.active:nth-child(2) { animation-delay: 0.2s; }
+.vl-wave.active:nth-child(5) { animation-delay: 0.4s; }
+.vl-wave.active:nth-child(6) { animation-delay: 0.15s; }
+.vl-wave.active:nth-child(8) { animation-delay: 0.35s; }
+
+.vl-wave.silent {
+  animation: vlSilentBlink 2s ease-in-out infinite;
+}
+
+/* Hover lift on cards */
+.vl-mini-card,
+.vl-step-card {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.vl-mini-card:hover,
+.vl-step-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 24px 48px rgba(17, 19, 36, 0.18);
+}
+
+/* Scroll-triggered reveal */
+.vl-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.vl-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-eyebrow,
+  .vl-hero-title,
+  .vl-hero-sub,
+  .vl-hero-bar,
+  .vl-hero-chips,
+  .vl-hero-card,
+  .vl-badge-preview,
+  .vl-wave.active,
+  .vl-wave.silent {
+    animation: none !important;
+  }
+
+  .vl-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

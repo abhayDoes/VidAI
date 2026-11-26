@@ -1,8 +1,28 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./LandingPage.css";
 
 export default function LandingPage({ onLaunchStudio }) {
   const [heroPrompt, setHeroPrompt] = useState("");
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const targets = root.querySelectorAll(".vl-reveal");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.14 }
+    );
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   const handleHeroSubmit = (e) => {
     e.preventDefault();
@@ -10,7 +30,7 @@ export default function LandingPage({ onLaunchStudio }) {
   };
 
   return (
-    <div className="vidai-landing">
+    <div ref={rootRef} className="vidai-landing">
       {/* Top Navbar */}
       <header className="vl-nav">
         <div className="vl-nav-inner">
@@ -152,7 +172,7 @@ export default function LandingPage({ onLaunchStudio }) {
       </section>
 
       {/* Metrics / Trust Strip */}
-      <section className="vl-stats-bar">
+      <section className="vl-stats-bar vl-reveal">
         <div className="vl-stats-inner">
           <div className="vl-stat">
             <strong>3 Languages</strong>
@@ -184,7 +204,7 @@ export default function LandingPage({ onLaunchStudio }) {
         </div>
 
         {/* Feature 1 */}
-        <div id="ai-editor" className="vl-feature-row">
+        <div id="ai-editor" className="vl-feature-row vl-reveal">
           <div className="vl-feature-text">
             <span className="vl-feature-kicker">NATURAL LANGUAGE TIMELINE</span>
             <h3>Speak or Type What You Want Cut—In Your Own Language</h3>
@@ -218,7 +238,7 @@ export default function LandingPage({ onLaunchStudio }) {
         </div>
 
         {/* Feature 2 */}
-        <div className="vl-feature-row vl-reverse">
+        <div className="vl-feature-row vl-reverse vl-reveal">
           <div className="vl-feature-text">
             <span className="vl-feature-kicker">SMART AUDIO &amp; SILENCE ENGINE</span>
             <h3>Automatically Strip Dead Air &amp; Extract Clean Audio</h3>
@@ -255,7 +275,7 @@ export default function LandingPage({ onLaunchStudio }) {
         </div>
 
         {/* Feature 3 */}
-        <div className="vl-feature-row">
+        <div className="vl-feature-row vl-reveal">
           <div className="vl-feature-text">
             <span className="vl-feature-kicker">SUBTITLES &amp; FULL NLE CONTROLS</span>
             <h3>Synced Captions + Multi-Track Timeline in One Workspace</h3>
@@ -295,7 +315,7 @@ export default function LandingPage({ onLaunchStudio }) {
         <div className="vl-section-head">
           <h2>From Raw Clip to Final Video in 3 Steps</h2>
         </div>
-        <div className="vl-steps-grid">
+        <div className="vl-steps-grid vl-reveal">
           <div className="vl-step-card">
             <span className="vl-step-num">1</span>
             <h4>Import Your Video</h4>
@@ -324,7 +344,7 @@ export default function LandingPage({ onLaunchStudio }) {
       </section>
 
       {/* Final CTA Banner */}
-      <section className="vl-bottom-cta">
+      <section className="vl-bottom-cta vl-reveal">
         <h2>Ready to Edit Faster With AI?</h2>
         <p>
           Jump straight into VidAI Studio—import a video and run your first
