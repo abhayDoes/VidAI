@@ -7,6 +7,7 @@ import Timeline from "./components/Timeline/Timeline";
 import ClipMenu from "./components/Timeline/ClipMenu";
 import MediaPanel from "./components/MediaPanel/MediaPanel";
 import AIAssistant from "./components/AIAssistant/AIAssistant";
+import LandingPage from "./components/Landing/LandingPage";
 import ExportDialog from "./components/ExportDialog";
 import useVideoPlayer from "./hooks/useVideoPlayer";
 import useTimeline from "./hooks/useTimeline";
@@ -35,6 +36,8 @@ export default function App() {
   const [exportProgress, setExportProgress] = useState(0);
   const [clipMenu, setClipMenu] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState("media");
+  const [showLanding, setShowLanding] = useState(true);
+  const [initialAIPrompt, setInitialAIPrompt] = useState("");
   const [captions, setCaptions] = useState([]);
   const [activeVideoId, setActiveVideoId] = useState(null);
   const closeClipMenu = useCallback(() => setClipMenu(null), []);
@@ -579,6 +582,18 @@ export default function App() {
     [selectedClip, timeline, player]
   );
 
+  if (showLanding) {
+    return (
+      <LandingPage
+        onLaunchStudio={({ prompt = "", openAI = false } = {}) => {
+          setShowLanding(false);
+          if (openAI) setWorkspaceTab("ai");
+          if (prompt) setInitialAIPrompt(prompt);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="editor-container">
       <Header
@@ -586,6 +601,7 @@ export default function App() {
         clipCount={timeline.clips.length}
         hasVideo={timeline.clips.some((c) => c.type !== "audio")}
         hasAudio={timeline.clips.some((c) => c.type === "audio")}
+        onGoHome={() => setShowLanding(true)}
         onImport={() => fileInputRef.current?.click()}
         onImportAudio={() => audioInputRef.current?.click()}
         onSaveProject={handleSaveProject}
@@ -652,6 +668,7 @@ export default function App() {
               setCaptions={setCaptions}
               activeVideoId={activeVideoId}
               setActiveVideoId={setActiveVideoId}
+              initialPrompt={initialAIPrompt}
               timeline={timeline}
               player={player}
               onApplyTimelineSegments={handleApplyTimelineSegments}

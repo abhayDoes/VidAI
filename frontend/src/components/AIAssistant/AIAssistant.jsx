@@ -11,8 +11,13 @@ export default function AIAssistant({
   setCaptions = () => {},
   activeVideoId,
   setActiveVideoId = () => {},
+  initialPrompt = "",
 }) {
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt || "");
+
+  useEffect(() => {
+    if (initialPrompt) setPrompt(initialPrompt);
+  }, [initialPrompt]);
   const [isPlanning, setIsPlanning] = useState(false);
   const [planError, setPlanError] = useState("");
   const [candidatePlan, setCandidatePlan] = useState(null); // { plan_id, operations, message, resulting_timeline }
@@ -89,6 +94,8 @@ export default function AIAssistant({
     if (!res.ok) {
       throw new Error(data.detail || `Upload failed with status ${res.status}`);
     }
+    // Ensure timeline.json is initialized before /plan is called
+    await fetchTimeline(data.video_id);
     setActiveVideoId(data.video_id);
     return data.video_id;
   };
@@ -498,46 +505,6 @@ export default function AIAssistant({
         </div>
 
         {planError && <div className="ai-error-banner">{planError}</div>}
-
-        {/* Quick Example Chips */}
-        <div className="ai-prompt-chips">
-          <span
-            className="ai-chip"
-            onClick={() => setPrompt("cut the last 1 min")}
-          >
-            ✂ cut last 1 min
-          </span>
-          <span
-            className="ai-chip"
-            onClick={() => setPrompt("pehle 10 second hata do")}
-          >
-            ✂ pehle 10s hata do
-          </span>
-          <span
-            className="ai-chip"
-            onClick={() => setPrompt("keep only from 0:10 to 0:45")}
-          >
-            ⏱ keep 0:10 to 0:45
-          </span>
-          <span
-            className="ai-chip"
-            onClick={() => setPrompt("cut the part from 20s to 25s")}
-          >
-            ✂ cut 20s to 25s
-          </span>
-          <span
-            className="ai-chip ai-chip-subtitles"
-            onClick={() => setPrompt("add subtitles")}
-          >
-            💬 add subtitles
-          </span>
-          <span
-            className="ai-chip"
-            onClick={() => setPrompt("remove silent parts")}
-          >
-            🔇 remove silence
-          </span>
-        </div>
       </form>
 
       {/* Proposed Plan Card (Preview without committing) */}
@@ -597,77 +564,61 @@ export default function AIAssistant({
         </div>
       )}
 
-      {/* Separate Subtitles Section with Dedicated Button */}
-      <div className="ai-subtitles-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <strong style={{ fontSize: "0.85rem", color: "#e2e8f0", display: "flex", alignItems: "center", gap: "6px" }}>
-            <span>💬</span> Subtitles & Transcript
-          </strong>
-          <span className="ai-badge" style={{ backgroundColor: "#1e1b4b", color: "#a5b4fc" }}>
-            faster-whisper CPU
-          </span>
+      <input
+        ref={captionFileRef}
+        type="file"
+        accept="video/mp4,video/quicktime,video/x-matroska,video/webm"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files?.[0]) handleGenerateCaptions(e.target.files[0]);
+        }}
+      />
+
+      {/* Subtitle progress / results (triggered via AI prompt e.g. "add subtitles") */}
+      {(isGeneratingCaptions || captions?.length > 0 || captionError) && (
+        <div className="ai-subtitles-card">
+          {isGeneratingCaptions ? (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#94a3b8" }}>
+                <span>{captionStage}</span>
+                <span>{captionProgress || 0}%</span>
+              </div>
+              <div className="ai-progress-bar">
+                <div className="ai-progress-fill" style={{ width: `${captionProgress || 5}%` }}></div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {captions?.length > 0 && (
+                <div style={{ fontSize: "0.75rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>✓</span> {captions.length} subtitles generated & synced
+                </div>
+              )}
+
+              {activeVideoId && captions?.length > 0 && (
+                <div className="ai-caption-btn-group">
+                  <a
+                    href={`${API_BASE}/videos/${activeVideoId}/captions.srt`}
+                    download="captions.srt"
+                    className="ai-caption-btn"
+                  >
+                    ⬇ Download SRT
+                  </a>
+                  <a
+                    href={`${API_BASE}/videos/${activeVideoId}/captions.vtt`}
+                    download="captions.vtt"
+                    className="ai-caption-btn"
+                  >
+                    ⬇ Download VTT
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {captionError && <div className="ai-error-banner">{captionError}</div>}
         </div>
-
-        <input
-          ref={captionFileRef}
-          type="file"
-          accept="video/mp4,video/quicktime,video/x-matroska,video/webm"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            if (e.target.files?.[0]) handleGenerateCaptions(e.target.files[0]);
-          }}
-        />
-
-        {isGeneratingCaptions ? (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#94a3b8" }}>
-              <span>{captionStage}</span>
-              <span>{captionProgress || 0}%</span>
-            </div>
-            <div className="ai-progress-bar">
-              <div className="ai-progress-fill" style={{ width: `${captionProgress || 5}%` }}></div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
-            <button
-              type="button"
-              className="ai-btn-subtitles-main"
-              onClick={() => handleGenerateCaptions()}
-              disabled={isGeneratingCaptions}
-            >
-              <span>🎙️</span> {captions?.length ? "Regenerate Subtitles" : "Generate Subtitles"}
-            </button>
-
-            {captions?.length > 0 && (
-              <div style={{ fontSize: "0.75rem", color: "#4ade80", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>✓</span> {captions.length} subtitles generated & synced
-              </div>
-            )}
-
-            {activeVideoId && captions?.length > 0 && (
-              <div className="ai-caption-btn-group">
-                <a
-                  href={`${API_BASE}/videos/${activeVideoId}/captions.srt`}
-                  download="captions.srt"
-                  className="ai-caption-btn"
-                >
-                  ⬇ Download SRT
-                </a>
-                <a
-                  href={`${API_BASE}/videos/${activeVideoId}/captions.vtt`}
-                  download="captions.vtt"
-                  className="ai-caption-btn"
-                >
-                  ⬇ Download VTT
-                </a>
-              </div>
-            )}
-          </div>
-        )}
-
-        {captionError && <div className="ai-error-banner">{captionError}</div>}
-      </div>
+      )}
 
       {/* Export Final Video at the Very Bottom */}
       <div className="ai-export-footer">

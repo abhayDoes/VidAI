@@ -10,10 +10,16 @@ export default function Header({
   onSaveProject,
   onLoadProject,
   onExport,
+  onGoHome,
 }) {
   return (
     <header className="editor-header">
-      <div className="brand">
+      <div
+        className="brand"
+        onClick={onGoHome}
+        style={{ cursor: onGoHome ? "pointer" : "default" }}
+        title={onGoHome ? "Back to Landing Page" : undefined}
+      >
         <div className="brand-mark" aria-hidden="true">V<span>•</span></div>
         <div className="brand-details"><span className="brand-name">VidAI <span>Studio</span></span><span className="brand-meta">EDITOR <b>·</b> {clipCount} {clipCount === 1 ? "CLIP" : "CLIPS"}</span></div>
       </div>

@@ -149,6 +149,24 @@ def load_timeline(video_id: str, base_dir: Path | str = "./data/videos") -> Opti
         except Exception:
             pass
 
+    # Fallback: probe original.* directly if meta.json hasn't been written by the worker yet
+    v_dir = main_path.parent
+    if v_dir.is_dir():
+        for ext in (".mp4", ".mov", ".mkv", ".webm", ".avi"):
+            candidate = v_dir / f"original{ext}"
+            if candidate.is_file():
+                try:
+                    from app.captions.probe import probe_video
+                    meta = probe_video(candidate)
+                    dur = float(meta.get("duration", 0.0))
+                    if dur > 0:
+                        tl = create_initial_timeline(video_id, dur)
+                        save_timeline(tl, base_dir)
+                        return tl
+                except Exception:
+                    pass
+                break
+
     return None
 
 
