@@ -69,6 +69,30 @@ export default function AIAssistant({
     }
   };
 
+  // Helper: find a local video File from selectedClip or timeline
+  const getTimelineVideoFile = () => {
+    if (selectedClip?.file && selectedClip.type === "video") return selectedClip.file;
+    if (selectedClip?.file) return selectedClip.file;
+    const firstVideo = timeline?.clips?.find((c) => c.type === "video" && c.file);
+    return firstVideo?.file || null;
+  };
+
+  // Helper: upload a local File to backend and return its video_id
+  const uploadVideoForAI = async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/videos`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || `Upload failed with status ${res.status}`);
+    }
+    setActiveVideoId(data.video_id);
+    return data.video_id;
+  };
+
   // 1. Generate editing plan from natural language prompt
   const handleGeneratePlan = async (e) => {
     if (e) e.preventDefault();
@@ -80,16 +104,10 @@ export default function AIAssistant({
       setPrompt("");
       setPlanError("");
       setCaptionError("");
-      // If a local clip is selected, use its file; otherwise open the file picker
-      handleGenerateCaptions(selectedClip?.file || null);
+      handleGenerateCaptions(getTimelineVideoFile());
       return;
     }
     // ─────────────────────────────────────────────────────────────────────
-
-    if (!activeVideoId) {
-      setPlanError("Upload a video to the AI editor first (use the Upload button above the timeline).");
-      return;
-    }
 
     setIsPlanning(true);
     setPlanError("");
@@ -97,7 +115,17 @@ export default function AIAssistant({
     setIsPreviewingPlan(false);
 
     try {
-      const res = await fetch(`${API_BASE}/videos/${activeVideoId}/plan`, {
+      let targetVideoId = activeVideoId;
+      if (!targetVideoId) {
+        const localFile = getTimelineVideoFile();
+        if (!localFile) {
+          setPlanError("Import a video into the timeline first.");
+          return;
+        }
+        targetVideoId = await uploadVideoForAI(localFile);
+      }
+
+      const res = await fetch(`${API_BASE}/videos/${targetVideoId}/plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: cleanPrompt }),
@@ -295,7 +323,7 @@ export default function AIAssistant({
 
   // 7. Generate Captions
   const handleGenerateCaptions = (file) => {
-    const targetFile = file || selectedClip?.file;
+    const targetFile = file || getTimelineVideoFile();
     if (!targetFile) {
       captionFileRef.current?.click();
       return;
@@ -502,6 +530,12 @@ export default function AIAssistant({
             onClick={() => setPrompt("add subtitles")}
           >
             💬 add subtitles
+          </span>
+          <span
+            className="ai-chip"
+            onClick={() => setPrompt("remove silent parts")}
+          >
+            🔇 remove silence
           </span>
         </div>
       </form>

@@ -125,7 +125,14 @@ async def create_plan_endpoint(video_id: str, request: PlanRequest):
             detail=str(ex),
         )
 
-    plan, errors = plan_edit(prompt, video_id, provider, base_dir=base_dir)
+    try:
+        plan, errors = plan_edit(prompt, video_id, provider, base_dir=base_dir)
+    except Exception as ex:
+        logger.error(f"[Editor Plan] LLM error for video_id={video_id}: {ex}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AI planner error: {ex}",
+        )
     if errors or not plan:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
