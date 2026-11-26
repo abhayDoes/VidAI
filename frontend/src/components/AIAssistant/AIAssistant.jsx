@@ -73,7 +73,23 @@ export default function AIAssistant({
   const handleGeneratePlan = async (e) => {
     if (e) e.preventDefault();
     const cleanPrompt = prompt.trim();
-    if (!cleanPrompt || !activeVideoId || isPlanning) return;
+    if (!cleanPrompt || isPlanning) return;
+
+    // ── Subtitle / Caption intent ─────────────────────────────────────────
+    if (isSubtitleIntent(cleanPrompt)) {
+      setPrompt("");
+      setPlanError("");
+      setCaptionError("");
+      // If a local clip is selected, use its file; otherwise open the file picker
+      handleGenerateCaptions(selectedClip?.file || null);
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    if (!activeVideoId) {
+      setPlanError("Upload a video to the AI editor first (use the Upload button above the timeline).");
+      return;
+    }
 
     setIsPlanning(true);
     setPlanError("");
@@ -260,6 +276,23 @@ export default function AIAssistant({
     }
   };
 
+  // Helper: detect subtitle/caption intent in a natural language prompt
+  const isSubtitleIntent = (text) => {
+    const lower = text.toLowerCase();
+    const keywords = [
+      "subtitle", "subtitles", "caption", "captions",
+      "transcript", "transcribe", "transcription",
+      "sub ", "subs", "cc",
+      // Hinglish / Hindi variants
+      "subtitles lagao", "subtitle lagao", "caption lagao", "captions lagao",
+      "subtitles add", "subtitle add", "caption add", "captions add",
+      "add subtitles", "add subtitle", "add captions", "add caption",
+      "generate subtitles", "generate subtitle", "generate captions",
+      "likho", "text lagao", "bolne wala",
+    ];
+    return keywords.some((kw) => lower.includes(kw));
+  };
+
   // 7. Generate Captions
   const handleGenerateCaptions = (file) => {
     const targetFile = file || selectedClip?.file;
@@ -415,14 +448,14 @@ export default function AIAssistant({
             placeholder={
               isRenderRunning
                 ? "Rendering in progress..."
-                : "e.g. cut the last 1 min, pehle 10s hata do"
+                : "e.g. cut last 1 min, add subtitles, pehle 10s hata do"
             }
-            disabled={!activeVideoId || isPlanning || isRenderRunning}
+            disabled={isPlanning || isRenderRunning}
           />
           <button
             type="submit"
             className="ai-btn-arrow"
-            disabled={!activeVideoId || !prompt.trim() || isPlanning || isRenderRunning}
+            disabled={!prompt.trim() || isPlanning || isRenderRunning}
             title="Generate Edit"
           >
             {isPlanning ? (
@@ -463,6 +496,12 @@ export default function AIAssistant({
             onClick={() => setPrompt("cut the part from 20s to 25s")}
           >
             ✂ cut 20s to 25s
+          </span>
+          <span
+            className="ai-chip ai-chip-subtitles"
+            onClick={() => setPrompt("add subtitles")}
+          >
+            💬 add subtitles
           </span>
         </div>
       </form>

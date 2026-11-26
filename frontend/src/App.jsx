@@ -305,7 +305,30 @@ export default function App() {
   };
 
   const handleProcessClip = async (operation, options = {}) => {
-    if (!selectedClip?.file) {
+    if (!selectedClip) {
+      setStatus("Select a clip first");
+      return;
+    }
+
+    // Resolve the source file — may need to fetch remote clips
+    let fileToProcess = selectedClip?.file;
+    if (!fileToProcess && selectedClip?.sourceUrl) {
+      try {
+        setStatus("Fetching clip for local processing...");
+        const resp = await fetch(selectedClip.sourceUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        fileToProcess = new File(
+          [blob],
+          selectedClip.filename || selectedClip.title || "video.mp4",
+          { type: blob.type || "video/mp4" }
+        );
+      } catch (fetchErr) {
+        setStatus(`Cannot fetch clip for processing: ${fetchErr.message}`);
+        return;
+      }
+    }
+    if (!fileToProcess) {
       setStatus("Select a locally imported clip first");
       return;
     }
@@ -323,7 +346,7 @@ export default function App() {
     }
     try {
       setStatus(`Loading FFmpeg.wasm for local ${operation}...`);
-      const result = await processClip(selectedClip.file, operation, options, (progress) => {
+      const result = await processClip(fileToProcess, operation, options, (progress) => {
         setStatus(`${operation[0].toUpperCase()}${operation.slice(1)} locally: ${Math.round(progress * 100)}%`);
       });
       if (operation === "audio-export") {
